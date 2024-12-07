@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
-	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/carlmjohnson/requests"
@@ -25,6 +25,11 @@ var CLI struct {
 			Username string `arg:"" name:"username" help:"Username to download."`
 		} `cmd:"" help:"Download users."`
 	} `cmd:"" help:"Manage users."`
+	Images struct {
+		Metadata struct {
+			Username string `arg:"" name:"username" help:"Username to get metadata for."`
+		} `cmd:"" help:"Get metadata for users."`
+	} `cmd:"" help:"Manage images."`
 }
 
 func main() {
@@ -37,6 +42,13 @@ func main() {
 func run() error {
 	ctx := kong.Parse(&CLI)
 	switch ctx.Command() {
+	case "images metadata <username>":
+		url := "https://civitai.com/api/v1/images?nsfw=X&token=" + CLI.APIKey + "&username=" + CLI.Images.Metadata.Username
+		images, err := fetchItems(context.Background(), url)
+		if err != nil {
+			return err
+		}
+		return json.NewEncoder(os.Stdout).Encode(images)
 	case "posts download <id>":
 		for _, id := range CLI.Posts.Download.Ids {
 			url := "https://civitai.com/api/v1/images?nsfw=X&token=" + CLI.APIKey + "&postId=" + fmt.Sprintf("%d", id)
@@ -55,7 +67,7 @@ func run() error {
 
 func downloadImages(ctx context.Context, url string) error {
 	var resp struct {
-		Items    []*civit.Image
+		Items    []*civit.Item
 		Metadata civit.Metadata `json:"metadata"`
 	}
 	err := requests.URL(url).ToJSON(&resp).Fetch(ctx)
@@ -71,10 +83,7 @@ func downloadImages(ctx context.Context, url string) error {
 		if err := requests.URL(item.Url).ToFile(path).Fetch(ctx); err != nil {
 			return err
 		}
-		ctime, err := time.Parse(time.RFC3339, item.CreatedAt)
-		if err != nil {
-			return err
-		}
+		ctime := item.CreatedAt
 		if err := os.Chtimes(path, ctime, ctime); err != nil {
 			return err
 		}
@@ -88,6 +97,26 @@ func downloadImages(ctx context.Context, url string) error {
 	return nil
 }
 
-func imageToPath(image *civit.Image) string {
+func imageToPath(image *civit.Item) string {
 	return filepath.Join("posts", image.Username, fmt.Sprintf("%d", image.PostId), path.Base(image.Url))
+}
+
+func fetchItems(ctx context.Context, url string) ([]*civit.Item, error) {
+	var resp struct {
+		Items    []*civit.Item
+		Metadata civit.Metadata `json:"metadata"`
+	}
+	err := requests.URL(url).ToJSON(&resp).Fetch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	images := resp.Items
+	if resp.Metadata.NextPage != "" {
+		nextImages, err := fetchItems(ctx, resp.Metadata.NextPage)
+		if err != nil {
+			return nil, err
+		}
+		images = append(images, nextImages...)
+	}
+	return images, nil
 }
