@@ -43,38 +43,34 @@ func run() error {
 	ctx := kong.Parse(&CLI)
 	switch ctx.Command() {
 	case "images metadata <username>":
-		url := "https://civitai.com/api/v1/images?nsfw=X&token=" + CLI.APIKey + "&username=" + CLI.Images.Metadata.Username
-		images, err := fetchItems(context.Background(), url)
+		items, err := civit.New(CLI.APIKey).ItemsForUser(context.Background(), CLI.Images.Metadata.Username)
 		if err != nil {
 			return err
 		}
-		return json.NewEncoder(os.Stdout).Encode(images)
+		return json.NewEncoder(os.Stdout).Encode(items)
 	case "posts download <id>":
+		client := civit.New(CLI.APIKey)
 		for _, id := range CLI.Posts.Download.Ids {
-			url := "https://civitai.com/api/v1/images?nsfw=X&token=" + CLI.APIKey + "&postId=" + fmt.Sprintf("%d", id)
-			if err := downloadImages(context.Background(), url); err != nil {
+			items, err := client.ItemsForPost(context.Background(), id)
+			if err != nil {
 				return err
 			}
+			return downloadItems(context.Background(), items)
 		}
 		return nil
 	case "users download <username>":
-		url := "https://civitai.com/api/v1/images?nsfw=X&token=" + CLI.APIKey + "&username=" + CLI.Users.Download.Username
-		return downloadImages(context.Background(), url)
+		items, err := civit.New(CLI.APIKey).ItemsForUser(context.Background(), CLI.Users.Download.Username)
+		if err != nil {
+			return err
+		}
+		return downloadItems(context.Background(), items)
 	default:
 		return fmt.Errorf("unknown command: %s", ctx.Command())
 	}
 }
 
-func downloadImages(ctx context.Context, url string) error {
-	var resp struct {
-		Items    []*civit.Item
-		Metadata civit.Metadata `json:"metadata"`
-	}
-	err := requests.URL(url).ToJSON(&resp).Fetch(ctx)
-	if err != nil {
-		return err
-	}
-	for _, item := range resp.Items {
+func downloadItems(ctx context.Context, items []*civit.Item) error {
+	for _, item := range items {
 		path := imageToPath(item)
 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 			return err
@@ -91,32 +87,9 @@ func downloadImages(ctx context.Context, url string) error {
 			return err
 		}
 	}
-	if resp.Metadata.NextPage != "" {
-		return downloadImages(ctx, resp.Metadata.NextPage)
-	}
 	return nil
 }
 
 func imageToPath(image *civit.Item) string {
 	return filepath.Join("posts", image.Username, fmt.Sprintf("%d", image.PostId), path.Base(image.Url))
-}
-
-func fetchItems(ctx context.Context, url string) ([]*civit.Item, error) {
-	var resp struct {
-		Items    []*civit.Item
-		Metadata civit.Metadata `json:"metadata"`
-	}
-	err := requests.URL(url).ToJSON(&resp).Fetch(ctx)
-	if err != nil {
-		return nil, err
-	}
-	images := resp.Items
-	if resp.Metadata.NextPage != "" {
-		nextImages, err := fetchItems(ctx, resp.Metadata.NextPage)
-		if err != nil {
-			return nil, err
-		}
-		images = append(images, nextImages...)
-	}
-	return images, nil
 }
