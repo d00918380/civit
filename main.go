@@ -30,6 +30,9 @@ var CLI struct {
 			Username string `arg:"" name:"username" help:"Username to get metadata for."`
 		} `cmd:"" help:"Get metadata for users."`
 	} `cmd:"" help:"Manage images."`
+	Report struct {
+		Input string `arg:"" name:"input" help:"Input file."`
+	} `cmd:"" help:"Generate a report."`
 }
 
 func main() {
@@ -58,6 +61,17 @@ func run() error {
 			return downloadItems(context.Background(), items)
 		}
 		return nil
+	case "report <input>":
+		var items []*civit.Item
+		f, err := os.Open(CLI.Report.Input)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := json.NewDecoder(f).Decode(&items); err != nil {
+			return err
+		}
+		return report(os.Stdout, items)
 	case "users download <username>":
 		items, err := civit.New(CLI.APIKey).ItemsForUser(context.Background(), CLI.Users.Download.Username)
 		if err != nil {
