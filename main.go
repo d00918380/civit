@@ -11,6 +11,7 @@ import (
 	"github.com/alecthomas/kong"
 	"github.com/carlmjohnson/requests"
 	"github.com/d00918380/civit/internal/civit"
+	"github.com/d00918380/civit/internal/trpc"
 )
 
 var CLI struct {
@@ -30,6 +31,10 @@ var CLI struct {
 			Username string `arg:"" name:"username" help:"Username to get metadata for."`
 		} `cmd:"" help:"Get metadata for users."`
 	} `cmd:"" help:"Manage images."`
+	Orchestrator struct {
+		Download struct {
+		} `cmd:"" help:"Download all images in the orchestrator."`
+	} `cmd:"" help:"Manage orchestrator."`
 	Report struct {
 		Input string `arg:"" name:"input" help:"Input file."`
 	} `cmd:"" help:"Generate a report."`
@@ -51,6 +56,33 @@ func run() error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(items)
+	case "orchestrator download":
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
+		iter := c.QueryGeneratedImages(ctx)
+		for iter.Next() {
+			item := iter.Item()
+			for _, step := range item.Steps {
+				for _, image := range step.Images {
+					path := filepath.Join(
+						"generated",
+						fmt.Sprintf("%04d", image.Completed.Year()),
+						fmt.Sprintf("%02d", image.Completed.Month()),
+						fmt.Sprintf("%02d", image.Completed.Day()),
+						item.ID,
+						image.ID+".jpg",
+					)
+					fmt.Println(image.URL, path)
+					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+						return err
+					}
+					if err := requests.URL(image.URL).ToFile(path).Fetch(ctx); err != nil {
+						fmt.Println(err) // some images are missing
+					}
+				}
+			}
+		}
+		return iter.Err()
 	case "posts download <id>":
 		client := civit.New(CLI.APIKey)
 		for _, id := range CLI.Posts.Download.Ids {
