@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/alecthomas/kong"
 	"github.com/carlmjohnson/requests"
@@ -23,7 +24,8 @@ var CLI struct {
 	} `cmd:"" help:"Manage posts."`
 	Users struct {
 		Download struct {
-			Username string `arg:"" name:"username" help:"Username to download."`
+			// Username string `arg:"" name:"username" help:"Username to download."`
+			Id int `arg:"" name:"id" help:"User ID to download."`
 		} `cmd:"" help:"Download users."`
 	} `cmd:"" help:"Manage users."`
 	Images struct {
@@ -84,13 +86,28 @@ func run() error {
 		}
 		return iter.Err()
 	case "posts download <id>":
-		client := civit.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
 		for _, id := range CLI.Posts.Download.Ids {
-			items, err := client.ItemsForPost(context.Background(), id)
-			if err != nil {
-				return err
+			iter := c.ImagesForPost(ctx, id)
+			for iter.Next() {
+				img := iter.Item()
+				path := filepath.Join(
+					"posts",
+					strconv.Itoa(img.PostID),
+					img.URL+".jpeg",
+				)
+				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+					return err
+				}
+				name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
+				url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
+				fmt.Println("Downloading", url, "to", path)
+				if err := requests.URL(url).ToFile(path).Fetch(ctx); err != nil {
+					fmt.Println(err) // some images are missing
+					fmt.Printf("%+v\n", img)
+				}
 			}
-			return downloadItems(context.Background(), items)
 		}
 		return nil
 	case "report <input>":
@@ -104,38 +121,36 @@ func run() error {
 			return err
 		}
 		return report(os.Stdout, items)
-	case "users download <username>":
-		items, err := civit.New(CLI.APIKey).ItemsForUser(context.Background(), CLI.Users.Download.Username)
-		if err != nil {
-			return err
+	case "users download <id>":
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
+		iter := c.ImagesForUser(ctx, CLI.Users.Download.Id)
+		for iter.Next() {
+			img := iter.Item()
+			path := filepath.Join(
+				"posts",
+				strconv.Itoa(img.PostID),
+				img.URL+".jpeg",
+			)
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				return err
+			}
+			name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
+			url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
+			if err := fetch(ctx, url, path); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
 		}
-		return downloadItems(context.Background(), items)
+		return iter.Err()
 	default:
 		return fmt.Errorf("unknown command: %s", ctx.Command())
 	}
 }
 
-func downloadItems(ctx context.Context, items []*civit.Item) error {
-	for _, item := range items {
-		path := imageToPath(item)
-		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Downloading %s to %s\n", item.Url, path)
-		if err := requests.URL(item.Url).ToFile(path).Fetch(ctx); err != nil {
-			return err
-		}
-		ctime := item.CreatedAt
-		if err := os.Chtimes(path, ctime, ctime); err != nil {
-			return err
-		}
-		if err := os.Chtimes(filepath.Dir(path), ctime, ctime); err != nil {
-			return err
-		}
+func fetch(ctx context.Context, url, path string) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
 	}
-	return nil
-}
-
-func imageToPath(image *civit.Item) string {
-	return filepath.Join("posts", image.Username, fmt.Sprintf("%d", image.PostId), path.Base(image.Url))
+	fmt.Println("fetch:", url, "=>", path)
+	return requests.URL(url).ToFile(path).Fetch(ctx)
 }

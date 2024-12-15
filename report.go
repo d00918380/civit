@@ -17,6 +17,8 @@ const REPORT = `<!DOCTYPE html>
 	</head>
 	<body>
 		<title>Report</title>
+		<b>Posts: {{len .Posts}}</b> <br>
+		<b>Images: {{len .Images}}</b> <br>
 		<ul>
 			<li><a href="#posts_by_score">Posts by score</a></li>
 			<li><a href="#posts_by_date">Posts by date</a></li>

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/carlmjohnson/requests"
@@ -106,6 +107,50 @@ func (c *Client) QueryGeneratedImages(ctx context.Context) *Iter[GeneratedItem] 
 			return fmt.Sprintf("https://civitai.com/api/trpc/orchestrator.queryGeneratedImages?input=%s", url.QueryEscape(`{"json":{"tags":["gen"],"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
 		default:
 			return fmt.Sprintf("https://civitai.com/api/trpc/orchestrator.queryGeneratedImages?input=%s", url.QueryEscape(`{"json":{"tags":["gen"],"cursor":"`+cursor+`","authed":true}}`))
+		}
+	}}
+	iter.url = iter.nextFn("")
+	return iter
+}
+
+type Image struct {
+	ID        int       `json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	NSFWLevel int       `json:"nsfwLevel"`
+	Width     int       `json:"width"`
+	Height    int       `json:"height"`
+	Hash      string    `json:"hash"`
+	HideMeta  bool      `json:"hideMeta"`
+	HasMeta   bool      `json:"hasMeta"`
+	OnSite    bool      `json:"onSite"`
+	CreatedAt time.Time `json:"createdAt"`
+	SortAt    time.Time `json:"sortAt"`
+	MimeType  string    `json:"mimeType"`
+	Type      string    `json:"type"`
+	PostID    int       `json:"postId"`
+}
+
+func (c *Client) ImagesForPost(ctx context.Context, id int) *Iter[Image] {
+	iter := &Iter[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+		switch cursor {
+		case "":
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
+		default:
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":"`+cursor+`","authed":true}}`))
+		}
+	}}
+	iter.url = iter.nextFn("")
+	return iter
+}
+
+func (c *Client) ImagesForUser(ctx context.Context, id int) *Iter[Image] {
+	iter := &Iter[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+		switch cursor {
+		case "":
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"userId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
+		default:
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"userId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":"`+cursor+`","authed":true}}`))
 		}
 	}}
 	iter.url = iter.nextFn("")
