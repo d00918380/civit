@@ -15,20 +15,16 @@ type Client struct {
 	token string
 }
 
-type Result[T any] struct {
-	Data Data[T] `json:"data"`
+type CursorResult[T any] struct {
+	Data struct {
+		JSON struct {
+			Items      []T    `json:"items"`
+			NextCursor string `json:"nextCursor"`
+		} `json:"json"`
+	} `json:"data"`
 }
 
-type Data[T any] struct {
-	JSON JSON[T] `json:"json"`
-}
-
-type JSON[T any] struct {
-	Items      []T    `json:"items"`
-	NextCursor string `json:"nextCursor"`
-}
-
-type Iter[T any] struct {
+type CursorIterator[T any] struct {
 	ctx    context.Context
 	items  []T
 	nextFn func(string) string
@@ -37,7 +33,7 @@ type Iter[T any] struct {
 	token  string
 }
 
-func (i *Iter[T]) Next() bool {
+func (i *CursorIterator[T]) Next() bool {
 	if i.err != nil {
 		return false
 	}
@@ -45,7 +41,7 @@ func (i *Iter[T]) Next() bool {
 		return true
 	}
 	var response struct {
-		Result[T] `json:"result"`
+		CursorResult[T] `json:"result"`
 	}
 	if i.url == "" {
 		return false
@@ -54,7 +50,7 @@ func (i *Iter[T]) Next() bool {
 		i.err = err
 		return false
 	}
-	i.items = response.Result.Data.JSON.Items
+	i.items = response.CursorResult.Data.JSON.Items
 	switch response.Data.JSON.NextCursor {
 	case "":
 		i.url = ""
@@ -64,7 +60,7 @@ func (i *Iter[T]) Next() bool {
 	return len(i.items) > 0
 }
 
-func (i *Iter[T]) Item() T {
+func (i *CursorIterator[T]) Item() T {
 	return pop(&i.items)
 }
 
@@ -75,7 +71,7 @@ func pop[T any](s *[]T) T {
 	*s = (*s)[1:]
 	return v
 }
-func (i *Iter[T]) Err() error {
+func (i *CursorIterator[T]) Err() error {
 	return i.err
 }
 
@@ -100,8 +96,8 @@ type GeneratedItem struct {
 	} `json:"steps"`
 }
 
-func (c *Client) QueryGeneratedImages(ctx context.Context) *Iter[GeneratedItem] {
-	iter := &Iter[GeneratedItem]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (c *Client) QueryGeneratedImages(ctx context.Context) *CursorIterator[GeneratedItem] {
+	iter := &CursorIterator[GeneratedItem]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/orchestrator.queryGeneratedImages?input=%s", url.QueryEscape(`{"json":{"tags":["gen"],"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
@@ -131,8 +127,8 @@ type Image struct {
 	PostID    int       `json:"postId"`
 }
 
-func (c *Client) ImagesForPost(ctx context.Context, id int) *Iter[Image] {
-	iter := &Iter[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Image] {
+	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
@@ -144,8 +140,8 @@ func (c *Client) ImagesForPost(ctx context.Context, id int) *Iter[Image] {
 	return iter
 }
 
-func (c *Client) ImagesForUser(ctx context.Context, id int) *Iter[Image] {
-	iter := &Iter[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (c *Client) ImagesForUser(ctx context.Context, id int) *CursorIterator[Image] {
+	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"userId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
@@ -155,4 +151,78 @@ func (c *Client) ImagesForUser(ctx context.Context, id int) *Iter[Image] {
 	}}
 	iter.url = iter.nextFn("")
 	return iter
+}
+
+type Result[T any] struct {
+	Data struct {
+		JSON []T `json:"json"`
+	} `json:"data"`
+}
+
+type Iterator[T any] struct {
+	ctx   context.Context
+	items []T
+	err   error
+	url   string
+	token string
+}
+
+func (i *Iterator[T]) Next() bool {
+	if i.err != nil {
+		return false
+	}
+	if len(i.items) > 0 {
+		return true
+	}
+	var response struct {
+		Result[T] `json:"result"`
+	}
+	if i.url == "" {
+		return false
+	}
+	fmt.Println(i.url)
+	if err := requests.URL(i.url).Header("Authorization", "Bearer "+i.token).ToJSON(&response).Fetch(i.ctx); err != nil {
+		i.err = err
+		return false
+	}
+	i.items = response.Result.Data.JSON
+	return len(i.items) > 0
+}
+
+func (i *Iterator[T]) Item() T {
+	return pop(&i.items)
+}
+
+func (i *Iterator[T]) Err() error {
+	return i.err
+}
+
+type User struct {
+	ID       int    `json:"id"`
+	Username string `json:"username"`
+}
+
+func (c *Client) UsersFollowing(ctx context.Context) *CursorIterator[User] {
+	iter := &CursorIterator[User]{ctx: ctx, token: c.token, nextFn: func(_ string) string {
+		return fmt.Sprintf("https://civitai.com/api/trpc/user.getFollowingUsers?input=%s", url.QueryEscape(`{"json":{"authed":true}}`))
+	}}
+	iter.url = iter.nextFn("")
+	return iter
+}
+
+type Lists struct {
+	Following []User `json:"following"`
+	Followers []User `json:"followers"`
+}
+
+func (c *Client) ListsForUser(ctx context.Context, username string) (*Lists, error) {
+	var response struct {
+		Result struct {
+			Data struct {
+				Lists `json:"json"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	url := fmt.Sprintf("https://civitai.com/api/trpc/user.getLists?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`"}}`))
+	return &response.Result.Data.Lists, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
 }

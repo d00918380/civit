@@ -7,4 +7,7 @@ require (
 	github.com/carlmjohnson/requests v0.24.3
 )
 
-require golang.org/x/net v0.27.0 // indirect
+require (
+	github.com/montanaflynn/stats v0.7.1 // indirect
+	golang.org/x/net v0.27.0 // indirect
+)

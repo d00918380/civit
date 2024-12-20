@@ -11,6 +11,7 @@ import (
 
 	"github.com/alecthomas/kong"
 	"github.com/carlmjohnson/requests"
+	"github.com/d00918380/civit/internal/algorithms"
 	"github.com/d00918380/civit/internal/civit"
 	"github.com/d00918380/civit/internal/trpc"
 )
@@ -23,11 +24,18 @@ var CLI struct {
 		} `cmd:"" help:"Download posts."`
 	} `cmd:"" help:"Manage posts."`
 	Users struct {
+		Following struct {
+		} `cmd:"" help:"Fetch users that the current user is following."`
 		Download struct {
 			// Username string `arg:"" name:"username" help:"Username to download."`
 			Id int `arg:"" name:"id" help:"User ID to download."`
 		} `cmd:"" help:"Download users."`
 	} `cmd:"" help:"Manage users."`
+	User struct {
+		List struct {
+			Username string `arg:"" name:"username" help:"Username to list followers for."`
+		} `cmd:"" help:"List management."`
+	} `cmd:"" help:"Manage user."`
 	Images struct {
 		Metadata struct {
 			Username string `arg:"" name:"username" help:"Username to get metadata for."`
@@ -140,6 +148,46 @@ func run() error {
 			if err := fetch(ctx, url, path); err != nil {
 				fmt.Fprintln(os.Stderr, err)
 			}
+		}
+		return iter.Err()
+	case "user list <username>":
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
+		lists, err := c.ListsForUser(ctx, CLI.User.List.Username)
+		if err != nil {
+			return err
+		}
+		followers := algorithms.Map(lists.Followers, func(u trpc.User) string { return u.Username })
+		following := algorithms.Map(lists.Following, func(u trpc.User) string { return u.Username })
+		fmt.Println("Followers:", len(followers), followers)
+		fmt.Println("Following:", len(following), following)
+
+		m := map[string]bool{}
+		for _, u := range lists.Followers {
+			m[u.Username] = true
+		}
+		for _, u := range lists.Following {
+			if !m[u.Username] {
+				fmt.Println("Not mutual:", u.Username)
+			}
+		}
+		return nil
+	// case "user list following <username>":
+	// 	c := trpc.New(CLI.APIKey)
+	// 	ctx := context.Background()
+	// 	iter := c.ListForUser(ctx, CLI.User.List.Following.Username, "following")
+	// 	for iter.Next() {
+	// 		list := iter.Item()
+	// 		fmt.Println(list)
+	// 	}
+	// 	return iter.Err()
+	case "users following":
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
+		iter := c.UsersFollowing(ctx)
+		for iter.Next() {
+			user := iter.Item()
+			fmt.Println(user)
 		}
 		return iter.Err()
 	default:

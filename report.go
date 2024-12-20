@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/d00918380/civit/internal/civit"
+	"github.com/montanaflynn/stats"
 )
 
 const REPORT = `<!DOCTYPE html>
@@ -17,8 +18,31 @@ const REPORT = `<!DOCTYPE html>
 	</head>
 	<body>
 		<title>Report</title>
-		<b>Posts: {{len .Posts}}</b> <br>
+		<b>Posts: {{len .Posts}}</b>
+		<ul>
+		<li>p1: {{percentile .PostScores 1}}</li>
+		<li>p10: {{percentile .PostScores 10}}</li>
+		<li>p25: {{percentile .PostScores 25}}</li>
+		<li>p50: {{percentile .PostScores 50}}</li>
+		<li>p75: {{percentile .PostScores 75}}</li>
+		<li>p90: {{percentile .PostScores 90}}</li>
+		<li>p95: {{percentile .PostScores 95}}</li>
+		<li>p99: {{percentile .PostScores 99}}</li>
+		<li>p100: {{percentile .PostScores 100}}</li>
+		<li>mean: {{mean .PostScores}}</li>
+		<li>stddev: {{stddev .PostScores}}</li>
+		</ul><br>
 		<b>Images: {{len .Images}}</b> <br>
+		<ul>
+		<li>p1: {{percentile .ImageScores 1}}</li>
+		<li>p25: {{percentile .ImageScores 25}}</li>
+		<li>p50: {{percentile .ImageScores 50}}</li>
+		<li>p75: {{percentile .ImageScores 75}}</li>
+		<li>p99: {{percentile .ImageScores 99}}</li>
+		<li>p100: {{percentile .ImageScores 100}}</li>
+		<li>mean: {{mean .ImageScores}}</li>
+		<li>stddev: {{stddev .ImageScores}}</li>
+		</ul>
 		<ul>
 			<li><a href="#posts_by_score">Posts by score</a></li>
 			<li><a href="#posts_by_date">Posts by date</a></li>
@@ -72,7 +96,13 @@ const REPORT = `<!DOCTYPE html>
 </html>`
 
 func report(w io.Writer, items []*civit.Item) error {
-	t, err := template.New("report").Parse(REPORT)
+	funcs := template.FuncMap{
+		"mean":       stats.Mean,
+		"percentile": stats.Percentile,
+		"stddev":     stats.StandardDeviation,
+	}
+
+	t, err := template.New("report").Funcs(funcs).Parse(REPORT)
 	if err != nil {
 		return err
 	}
@@ -145,6 +175,18 @@ func (d *data) PostsByDate() []*post {
 		return int(b.CreatedAt().Sub(a.CreatedAt()))
 	})
 	return posts
+}
+
+func (d *data) PostScores() stats.Float64Data {
+	return stats.Float64Data(Map(d.Posts(), func(p *post) float64 {
+		return float64(p.Score())
+	}))
+}
+
+func (d *data) ImageScores() stats.Float64Data {
+	return stats.Float64Data(Map(d.Images(), func(i *image) float64 {
+		return float64(i.Score())
+	}))
 }
 
 type image struct {
