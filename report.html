@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="UTF-8">
+	</head>
+	<body>
+		<title>Report</title>
+		<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+		<script src="https://cdn.jsdelivr.net/npm/@observablehq/plot@0.6"></script>
+		<script type="module">
+
+        const images = {{.ImagesJS}};
+        const posts = {{.PostsJS}};
+
+		document.querySelector("#posts_by_score").append(
+            Plot.rectY(
+                posts,
+                Plot.binX(
+                    {
+                        "y": "count",
+                    }, 
+                    {
+                        "x": "score"
+                    }
+                ),
+            ).plot()
+        );
+        // document.querySelector("#posts_by_date").append(Plot.rectY(posts, {x:"createdAt", y: "score"}).plot());
+        // document.querySelector("#images_by_score").append(Plot.rectY(images, Plot.binX({y: "count"}, {x: "score"})).plot());
+        // document.querySelector("#images_by_date").append(Plot.rectY(images, {x:"createdAt", y: "score"}).plot());
+
+		</script>
+		<b>Posts: {{len .Posts}}</b>
+		<ul>
+		<li>p1: {{percentile .PostScores 1}}</li>
+		<li>p10: {{percentile .PostScores 10}}</li>
+		<li>p25: {{percentile .PostScores 25}}</li>
+		<li>p50: {{percentile .PostScores 50}}</li>
+		<li>p75: {{percentile .PostScores 75}}</li>
+		<li>p90: {{percentile .PostScores 90}}</li>
+		<li>p95: {{percentile .PostScores 95}}</li>
+		<li>p99: {{percentile .PostScores 99}}</li>
+		<li>p100: {{percentile .PostScores 100}}</li>
+		<li>mean: {{mean .PostScores}}</li>
+		<li>stddev: {{stddev .PostScores}}</li>
+		</ul><br>
+		<b>Images: {{len .Images}}</b> <br>
+		<ul>
+		<li>p1: {{percentile .ImageScores 1}}</li>
+		<li>p25: {{percentile .ImageScores 25}}</li>
+		<li>p50: {{percentile .ImageScores 50}}</li>
+		<li>p75: {{percentile .ImageScores 75}}</li>
+		<li>p99: {{percentile .ImageScores 99}}</li>
+		<li>p100: {{percentile .ImageScores 100}}</li>
+		<li>mean: {{mean .ImageScores}}</li>
+		<li>stddev: {{stddev .ImageScores}}</li>
+		</ul>
+		<ul>
+            <li>Worst Posts
+                <ul>
+                    <li><a href="#worsts_posts_7d">7d</a></li>
+                    <li><a href="#worsts_posts_30d">30d</a></li>
+                    <li><a href="#worsts_posts_90d">90d</a></li>
+                </ul>
+            </li>
+			<li><a href="#posts_by_score">Posts by score</a></li>
+			<li><a href="#posts_by_date">Posts by date</a></li>
+			<li><a href="#posts_by_efficiency">Posts by efficiency</a></li>
+			<li><a href="#images_by_score">Images by score</a></li>
+			<li><a href="#images_by_date">Images by date</a></li>
+		</ul>
+
+        {{$start := ago "168h"}}
+        {{$end := ago "24h"}}
+        {{$range := between $start $end}}
+        <h1 id="worsts_posts_7d">Worst Posts (-7d to -1d)</h1>
+        {{range worst_posts $range}}
+		<ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
+			<ul>
+				{{range .Images}}
+					<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> ({{.Score}})</li>
+				{{end}}
+			</ul>
+        </ol>
+        {{end}}
+
+        {{$start := ago "720h"}}
+        {{$end := ago "168h"}}
+        {{$range := between $start $end}}
+        <h1 id="worsts_posts_30d">Worst Posts (-30d to -7d)</h1>
+        {{range worst_posts $range}}
+		<ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
+			<ul>
+				{{range .Images}}
+					<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> ({{.Score}})</li>
+				{{end}}
+			</ul>
+        </ol>
+        {{end}}
+
+        {{$start := ago "2160h"}}
+        {{$end := ago "720h"}}
+        {{$range := between $start $end}}
+        <h1 id="worsts_posts_90d">Worst Posts (-90d to -30d)</h1>
+        {{range worst_posts $range}}
+        <ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
+            <ul>
+                {{range .Images}}
+                    <li><a href="{{.ImageURL}}">{{.ImageURL}}</a> ({{.Score}})</li>
+                {{end}}
+            </ul>
+        </ol>
+        {{end}}
+
+		<h1 id="posts_by_score">Posts by score</h1>
+		<ol>
+			{{range .PostsByScore}}
+				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
+			{{end}}
+		</ol>
+
+		<h1 id="posts_by_date">Posts by date</h1>
+		<ol>
+			{{range .PostsByDate}}
+				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
+			{{end}}
+		</ol>
+
+		<h1 id="posts_by_efficiency">Posts by efficiency</h1>
+		<ol>
+			{{range .PostsByEfficiency}}
+				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
+			{{end}}
+		</ol>
+
+		<h1 id="images_by_score">Images by score</h1>
+		<ol>
+			{{range .ImagesByScore}}
+				<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+			{{end}}
+		</ol>
+
+		<h1 id="images_by_date">Images by date</h1>
+		<ol>
+			{{range .PostsByDate}}
+			<li><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
+			<ul>
+				{{range .Images}}
+					<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> ({{.Score}})</li>
+				{{end}}
+			</ul>
+			</li>
+			{{end}}
+		</ol>
+
+	</body>
+</html>

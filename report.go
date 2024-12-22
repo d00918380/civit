@@ -1,115 +1,76 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/d00918380/civit/internal/algorithms"
 	"github.com/d00918380/civit/internal/civit"
 	"github.com/montanaflynn/stats"
 )
 
-const REPORT = `<!DOCTYPE html>
-<html>
-	<head>
-		<meta charset="UTF-8">
-	</head>
-	<body>
-		<title>Report</title>
-		<b>Posts: {{len .Posts}}</b>
-		<ul>
-		<li>p1: {{percentile .PostScores 1}}</li>
-		<li>p10: {{percentile .PostScores 10}}</li>
-		<li>p25: {{percentile .PostScores 25}}</li>
-		<li>p50: {{percentile .PostScores 50}}</li>
-		<li>p75: {{percentile .PostScores 75}}</li>
-		<li>p90: {{percentile .PostScores 90}}</li>
-		<li>p95: {{percentile .PostScores 95}}</li>
-		<li>p99: {{percentile .PostScores 99}}</li>
-		<li>p100: {{percentile .PostScores 100}}</li>
-		<li>mean: {{mean .PostScores}}</li>
-		<li>stddev: {{stddev .PostScores}}</li>
-		</ul><br>
-		<b>Images: {{len .Images}}</b> <br>
-		<ul>
-		<li>p1: {{percentile .ImageScores 1}}</li>
-		<li>p25: {{percentile .ImageScores 25}}</li>
-		<li>p50: {{percentile .ImageScores 50}}</li>
-		<li>p75: {{percentile .ImageScores 75}}</li>
-		<li>p99: {{percentile .ImageScores 99}}</li>
-		<li>p100: {{percentile .ImageScores 100}}</li>
-		<li>mean: {{mean .ImageScores}}</li>
-		<li>stddev: {{stddev .ImageScores}}</li>
-		</ul>
-		<ul>
-			<li><a href="#posts_by_score">Posts by score</a></li>
-			<li><a href="#posts_by_date">Posts by date</a></li>
-			<li><a href="#posts_by_efficiency">Posts by efficiency</a></li>
-			<li><a href="#images_by_score">Images by score</a></li>
-			<li><a href="#images_by_date">Images by date</a></li>
-		</ul>
+//go:embed report.html
+var reportHTML string
 
-		<h1 id="posts_by_score">Posts by score</h1>
-		<ol>
-			{{range .PostsByScore}}
-				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
-			{{end}}
-		</ol>
-
-		<h1 id="posts_by_date">Posts by date</h1>
-		<ol>
-			{{range .PostsByDate}}
-				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
-			{{end}}
-		</ol>
-
-		<h1 id="posts_by_efficiency">Posts by efficiency</h1>
-		<ol>
-			{{range .PostsByEfficiency}}
-				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
-			{{end}}
-		</ol>
-
-		<h1 id="images_by_score">Images by score</h1>
-		<ol>
-			{{range .ImagesByScore}}
-				<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
-			{{end}}
-		</ol>
-
-		<h1 id="images_by_date">Images by date</h1>
-		<ol>
-			{{range .PostsByDate}}
-			<li><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
-			<ul>
-				{{range .Images}}
-					<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> ({{.Score}})</li>
-				{{end}}
-			</ul>
-			</li>
-			{{end}}
-		</ol>
-
-	</body>
-</html>`
+type TimeRange struct {
+	Start time.Time
+	End   time.Time
+}
 
 func report(w io.Writer, items []*civit.Item) error {
+	data := &data{
+		Items: items,
+	}
+
 	funcs := template.FuncMap{
 		"mean":       stats.Mean,
 		"percentile": stats.Percentile,
 		"stddev":     stats.StandardDeviation,
+		"json": func(v any) (template.JS, error) {
+			var buf bytes.Buffer
+			err := json.NewEncoder(&buf).Encode(v)
+			s := strings.TrimSpace(buf.String()) // stupid json.NewEncoder adds a newline
+			return template.JS(s), err
+		},
+		"ago": func(s string) (time.Time, error) {
+			d, err := time.ParseDuration(s)
+			if err != nil {
+				return time.Time{}, err
+			}
+			return time.Now().Add(-d), nil
+		},
+		"between": func(a, b time.Time) TimeRange {
+			return TimeRange{a, b}
+		},
+		"worst_posts": func(r TimeRange) []*post {
+			insideRange := func(t time.Time) bool {
+				return t.After(r.Start) && t.Before(r.End)
+			}
+
+			posts := data.PostsByScore()
+			posts = algorithms.Filter(posts, func(p *post) bool {
+				return insideRange(p.CreatedAt())
+			})
+			slices.SortStableFunc(posts, func(a, b *post) int {
+				return a.Score() - b.Score()
+			})
+			return posts
+		},
 	}
 
-	t, err := template.New("report").Funcs(funcs).Parse(REPORT)
+	t, err := template.New("report.html").Funcs(funcs).Parse(reportHTML)
 	if err != nil {
 		return err
 	}
 
-	return t.Execute(w, &data{
-		Items: items,
-	})
+	return t.Execute(w, data)
 }
 
 type data struct {
@@ -189,6 +150,61 @@ func (d *data) ImageScores() stats.Float64Data {
 	}))
 }
 
+func (d *data) ImagesJSON() any {
+	return Map(d.Images(), func(i *image) any {
+		return map[string]any{
+			"id":        i.Id,
+			"imageURL":  i.ImageURL(),
+			"postURL":   i.PostURL(),
+			"score":     i.Score(),
+			"createdAt": i.CreatedAt,
+		}
+	})
+}
+
+// PostsJS prepares a fragment of javascript which represents the array of posts.
+// Becauses its javascript, the final element in the array must not have a trailing comma. cool.
+func (d *data) PostsJS() template.JS {
+	var buf bytes.Buffer
+	buf.WriteString("[\n")
+	for i, p := range d.Posts() {
+		buf.WriteString(fmt.Sprintf(`{id: %d, postURL: %q, score: %d, createdAt: new Date(%q)}`,
+			p.Id(), p.PostURL(), p.Score(), p.CreatedAt().Format(time.RFC3339)))
+		if i < len(d.Posts())-1 {
+			buf.WriteString(",\n")
+		}
+	}
+	buf.WriteString("\n];")
+	return template.JS(buf.String())
+}
+
+// ImagesJS prepares a fragment of javascript which represents the array of images.
+// Becauses its javascript, the final element in the array must not have a trailing comma. cool.
+func (d *data) ImagesJS() template.JS {
+	var buf bytes.Buffer
+	buf.WriteString("[\n")
+	for i, img := range d.Images() {
+		buf.WriteString(fmt.Sprintf(`{id: %d, imageURL: %q, postURL: %q, score: %d, createdAt: new Date(%q)}`,
+			img.Id, img.ImageURL(), img.PostURL(), img.Score(), img.CreatedAt))
+		if i < len(d.Images())-1 {
+			buf.WriteString(",\n")
+		}
+	}
+	buf.WriteString("\n];")
+	return template.JS(buf.String())
+}
+
+func (d *data) PostsJSON() any {
+	return Map(d.Posts(), func(p *post) any {
+		return map[string]any{
+			"id":        p.Id(),
+			"postURL":   p.PostURL(),
+			"score":     p.Score(),
+			"createdAt": p.CreatedAt(),
+		}
+	})
+}
+
 type image struct {
 	*civit.Item
 }
@@ -207,6 +223,10 @@ func (i *image) PostURL() template.HTMLAttr {
 
 type post struct {
 	images []*image
+}
+
+func (p *post) Id() int {
+	return First(p.images).PostId
 }
 
 func (p *post) PostURL() template.HTMLAttr {
