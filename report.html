@@ -56,6 +56,7 @@
 		<li>stddev: {{stddev .ImageScores}}</li>
 		</ul>
 		<ul>
+			<li><a href="#leaderboard">Leaderboard</a></li>
             <li>Worst Posts
                 <ul>
                     <li><a href="#worsts_posts_7d">7d</a></li>
@@ -69,6 +70,14 @@
 			<li><a href="#images_by_score">Images by score</a></li>
 			<li><a href="#images_by_date">Images by date</a></li>
 		</ul>
+
+		<h1 id="leaderboard">Leaderboard</h1>
+		Score: {{printf "%.0f" .Leaderboard.Score}}<br>
+		<ol>
+			{{range $rank, $entry := .Leaderboard.Entries}}
+				<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> {{printf "%.0f" .AdjustedScore}} ({{.Score}})</li>
+			{{end}}
+		</ol>
 
         {{$start := ago "168h"}}
         {{$end := ago "24h"}}

@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"math"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -205,6 +207,33 @@ func (d *data) PostsJSON() any {
 	})
 }
 
+func (d *data) Leaderboard() *Leaderboard {
+	const IMAGE_SCORE_FALLOFF = 120
+
+	cutoff := time.Now().Add(-time.Hour * 24 * 30) // 30 days ago
+	var entries []*LeaderboardEntry
+	for _, i := range d.Images() {
+		if i.CreatedAt.After(cutoff) {
+			entries = append(entries, &LeaderboardEntry{
+				image: i,
+			})
+		}
+	}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].AdjustedScore > entries[j].AdjustedScore
+	})
+	for rank, e := range entries {
+		quantityMultiplier := math.Max(0, 1-math.Pow(float64(rank)/IMAGE_SCORE_FALLOFF, 0.5))
+		score := float64(e.Score())
+		// fmt.Println("rank", rank, "score", score, "quantityMultiplier", quantityMultiplier, "adjustedScore", score*quantityMultiplier)
+		e.AdjustedScore = score * quantityMultiplier
+	}
+
+	// cutoff at 120
+	entries = entries[:min(120, len(entries))]
+	return &Leaderboard{Entries: entries}
+}
+
 type image struct {
 	*civit.Item
 }
@@ -251,6 +280,23 @@ func (p *post) Efficiency() float64 {
 	return float64(p.Score()) / float64(len(p.Images()))
 }
 
+type Leaderboard struct {
+	Entries []*LeaderboardEntry
+}
+
+func (l *Leaderboard) Score() float64 {
+	const IMAGE_SCORE_MULTIPLIER = 100
+	sum := Sum(Map(l.Entries, func(e *LeaderboardEntry) float64 {
+		return e.AdjustedScore
+	})...)
+	return math.Sqrt(sum) * IMAGE_SCORE_MULTIPLIER
+}
+
+type LeaderboardEntry struct {
+	*image
+	AdjustedScore float64
+}
+
 // Map applies the function f to each element of the slice and returns a new slice containing the results.
 func Map[T, R any](s []T, f func(T) R) []R {
 	r := make([]R, 0, len(s))
@@ -275,7 +321,7 @@ func First[T any](s []T) T {
 	return s[0]
 }
 
-func Sum[T int](s ...T) T {
+func Sum[T int | float64](s ...T) T {
 	var v T
 	for _, x := range s {
 		v += x
