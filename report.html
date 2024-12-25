@@ -56,19 +56,38 @@
 		<li>stddev: {{stddev .ImageScores}}</li>
 		</ul>
 		<ul>
-			<li><a href="#leaderboard">Leaderboard</a></li>
-            <li>Worst Posts
-                <ul>
-                    <li><a href="#worsts_posts_7d">7d</a></li>
-                    <li><a href="#worsts_posts_30d">30d</a></li>
-                    <li><a href="#worsts_posts_90d">90d</a></li>
-                </ul>
-            </li>
-			<li><a href="#posts_by_score">Posts by score</a></li>
-			<li><a href="#posts_by_date">Posts by date</a></li>
-			<li><a href="#posts_by_efficiency">Posts by efficiency</a></li>
-			<li><a href="#images_by_score">Images by score</a></li>
-			<li><a href="#images_by_date">Images by date</a></li>
+			<li>Posts:</li>
+			<ul>
+				<li><a href="#posts_by_score">Posts by score</a></li>
+				<li><a href="#posts_by_date">Posts by date</a></li>
+				<li><a href="#posts_by_efficiency">Posts by efficiency</a></li>
+				<li><a href="#best_posts_per_day">Best Posts per day</a></li>
+				<li><a href="#worst_posts_per_day">Worst Posts per day</a></li>
+				<li>Worst Posts
+					<ul>
+						<li><a href="#worsts_posts_7d">7d</a></li>
+						<li><a href="#worsts_posts_30d">30d</a></li>
+						<li><a href="#worsts_posts_90d">90d</a></li>
+						<li><a href="#worsts_efficiency_90d">Worst Efficiency 90d</a></li>
+					</ul>
+				</li>
+			</ul>
+		</ul>
+		<ul>
+			<li>Images:</li>
+			<ul>
+				<li><a href="#leaderboard">Leaderboard</a></li>
+				<li><a href="#images_by_score">Images by score</a></li>
+				<li><a href="#images_by_date">Images by date</a></li>
+				<li><a href="#best_images_per_day">Best Images per day</a></li>
+				<li><a href="#worst_images_per_day">Worst Images per day</a></li>
+				<li>Worst Images
+					<ul>
+						<li><a href="#worsts_images_7d">7d</a></li>
+						<li><a href="#worsts_images_30d">30d</a></li>
+						<li><a href="#worsts_images_90d">90d</a></li>
+					</ul>
+				</li>
 		</ul>
 
 		<h1 id="leaderboard">Leaderboard</h1>
@@ -79,11 +98,37 @@
 			{{end}}
 		</ol>
 
+		<h1 id="best_posts_per_day">Best Posts per day</h1>
+		<ol>
+			{{range $day, $posts := best_posts_per_day 3}}
+				<li>{{$day}}
+					<ul>
+						{{range $posts}}
+							<li><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+						{{end}}
+					</ul>
+				</li>
+			{{end}}
+		</ol>
+
+		<h1 id="worst_posts_per_day">Worst Posts per day</h1>
+		<ol>
+			{{range $day, $posts := worst_posts_per_day 1}}
+				<li>{{$day}}
+					<ul>
+						{{range $posts}}
+							<li><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+						{{end}}
+					</ul>
+				</li>
+			{{end}}
+		</ol>
+
         {{$start := ago "168h"}}
         {{$end := ago "24h"}}
         {{$range := between $start $end}}
         <h1 id="worsts_posts_7d">Worst Posts (-7d to -1d)</h1>
-        {{range worst_posts $range}}
+        {{range worst_posts $range 10}}
 		<ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
 			<ul>
 				{{range .Images}}
@@ -97,7 +142,7 @@
         {{$end := ago "168h"}}
         {{$range := between $start $end}}
         <h1 id="worsts_posts_30d">Worst Posts (-30d to -7d)</h1>
-        {{range worst_posts $range}}
+        {{range worst_posts $range 10}}
 		<ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
 			<ul>
 				{{range .Images}}
@@ -111,7 +156,7 @@
         {{$end := ago "720h"}}
         {{$range := between $start $end}}
         <h1 id="worsts_posts_90d">Worst Posts (-90d to -30d)</h1>
-        {{range worst_posts $range}}
+        {{range worst_posts $range 10}}
         <ol><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})
             <ul>
                 {{range .Images}}
@@ -120,6 +165,14 @@
             </ul>
         </ol>
         {{end}}
+
+		{{$start := ago "2160h"}}
+        {{$end := ago "24h"}}
+        {{$range := between $start $end}}
+        <h1 id="worsts_efficiency_90d">Worst Efficiency (-90d to -1d)</h1>
+		{{range worst_efficiency $range 10}}
+			<li><a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}}) {{printf "%.2f" .Efficiency}}</li>
+		{{end}}
 
 		<h1 id="posts_by_score">Posts by score</h1>
 		<ol>
@@ -140,6 +193,62 @@
 			{{range .PostsByEfficiency}}
 				<li><a href="{{.PostURL}}">{{.PostURL}}</a>	Score: {{.Score}} Images: {{len .Images}} {{printf "%.2f" .Efficiency}}</li>
 			{{end}}
+		</ol>
+
+		<h1 id="best_images_per_day">Best Images per day</h1>
+		<ol>
+			{{range $day, $images := best_images_per_day 3}}
+				<li>{{$day}}
+					<ul>
+						{{range $images}}
+							<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+						{{end}}
+					</ul>
+				</li>
+			{{end}}
+		</ol>
+
+		<h1 id="worst_images_per_day">Worst Images per day</h1>
+		<ol>
+			{{range $day, $images := worst_images_per_day 3}}
+				<li>{{$day}}
+					<ul>
+						{{range $images}}
+							<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+						{{end}}
+					</ul>
+				</li>
+			{{end}}
+		</ol>
+
+		{{$start := ago "168h"}}
+        {{$end := ago "24h"}}
+        {{$range := between $start $end}}
+        <h1 id="worsts_images_7d">Worst Posts (-7d to -1d)</h1>
+		<ol>
+        {{range worst_images $range 10}}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
+        </ol>
+
+		{{$start := ago "720h"}}
+		{{$end := ago "168h"}}
+		{{$range := between $start $end}}
+		<h1 id="worsts_images_30d">Worst Posts (-30d to -7d)</h1>
+		<ol>
+		{{range worst_images $range 10}}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
+		</ol>
+
+		{{$start := ago "2160h"}}
+		{{$end := ago "720h"}}
+		{{$range := between $start $end}}
+		<h1 id="worsts_images_90d">Worst Posts (-90d to -30d)</h1>
+		<ol>
+		{{range worst_images $range 10}}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
 		</ol>
 
 		<h1 id="images_by_score">Images by score</h1>

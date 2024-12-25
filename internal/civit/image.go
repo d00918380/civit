@@ -13,6 +13,8 @@ type Item struct {
 	BrowsingLevel int       `json:"browsingLevel"`
 	CreatedAt     time.Time `json:"createdAt"`
 	PostId        int       `json:"postId"`
+	Index         int       `json:"index"`
+	PublishedAt   time.Time `json:"publishedAt"`
 	Stats         ItemStats `json:"stats"`
 	Meta          *ItemMeta `json:"meta,omitempty"`
 	Username      string    `json:"username"`

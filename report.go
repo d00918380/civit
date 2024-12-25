@@ -51,19 +51,104 @@ func report(w io.Writer, items []*civit.Item) error {
 		"between": func(a, b time.Time) TimeRange {
 			return TimeRange{a, b}
 		},
-		"worst_posts": func(r TimeRange) []*post {
+		"best_posts_per_day": func(n int) map[time.Time][]*post {
+			days := make(map[time.Time][]*post)
+			for _, p := range data.Posts() {
+				day := p.PublishedAt().Truncate(time.Hour * 24)
+				days[day] = append(days[day], p)
+			}
+			for day := range days {
+				slices.SortStableFunc(days[day], func(a, b *post) int {
+					return b.Score() - a.Score()
+				})
+				days[day] = days[day][:min(n, len(days[day]))]
+			}
+			return days
+		},
+		"worst_posts_per_day": func(n int) map[time.Time][]*post {
+			days := make(map[time.Time][]*post)
+			for _, p := range data.Posts() {
+				day := p.PublishedAt().Truncate(time.Hour * 24)
+				days[day] = append(days[day], p)
+			}
+			for day := range days {
+				slices.SortStableFunc(days[day], func(a, b *post) int {
+					return a.Score() - b.Score()
+				})
+				days[day] = days[day][:min(n, len(days[day]))]
+			}
+			return days
+		},
+
+		"best_images_per_day": func(n int) map[time.Time][]*image {
+			days := make(map[time.Time][]*image)
+			for _, i := range data.Images() {
+				day := i.CreatedAt.Truncate(time.Hour * 24)
+				days[day] = append(days[day], i)
+			}
+			for day := range days {
+				slices.SortStableFunc(days[day], func(a, b *image) int {
+					return b.Score() - a.Score()
+				})
+				days[day] = days[day][:min(n, len(days[day]))]
+			}
+			return days
+		},
+		"worst_images_per_day": func(n int) map[time.Time][]*image {
+			days := make(map[time.Time][]*image)
+			for _, i := range data.Images() {
+				day := i.CreatedAt.Truncate(time.Hour * 24)
+				days[day] = append(days[day], i)
+			}
+			for day := range days {
+				slices.SortStableFunc(days[day], func(a, b *image) int {
+					return a.Score() - b.Score()
+				})
+				days[day] = days[day][:min(n, len(days[day]))]
+			}
+			return days
+		},
+		"worst_posts": func(r TimeRange, n int) []*post {
 			insideRange := func(t time.Time) bool {
 				return t.After(r.Start) && t.Before(r.End)
 			}
 
 			posts := data.PostsByScore()
 			posts = algorithms.Filter(posts, func(p *post) bool {
-				return insideRange(p.CreatedAt())
+				return insideRange(p.PublishedAt())
 			})
 			slices.SortStableFunc(posts, func(a, b *post) int {
 				return a.Score() - b.Score()
 			})
-			return posts
+			return posts[:n]
+		},
+		"worst_images": func(r TimeRange, n int) []*image {
+			insideRange := func(t time.Time) bool {
+				return t.After(r.Start) && t.Before(r.End)
+			}
+
+			images := data.ImagesByScore()
+			images = algorithms.Filter(images, func(i *image) bool {
+				return insideRange(i.CreatedAt)
+			})
+			slices.SortStableFunc(images, func(a, b *image) int {
+				return a.Score() - b.Score()
+			})
+			return images[:n]
+		},
+		"worst_efficiency": func(r TimeRange, n int) []*post {
+			insideRange := func(t time.Time) bool {
+				return t.After(r.Start) && t.Before(r.End)
+			}
+
+			posts := data.PostsByEfficiency()
+			posts = algorithms.Filter(posts, func(p *post) bool {
+				return insideRange(p.PublishedAt())
+			})
+			slices.SortStableFunc(posts, func(a, b *post) int {
+				return int((a.Efficiency() - b.Efficiency()) * 100)
+			})
+			return posts[:n]
 		},
 	}
 
@@ -95,6 +180,9 @@ func (d *data) Posts() []*post {
 	}
 	var ps []*post
 	for _, p := range posts {
+		slices.SortStableFunc(p.images, func(a, b *image) int {
+			return a.Index - b.Index
+		})
 		ps = append(ps, p)
 	}
 	return ps
@@ -135,7 +223,7 @@ func (d *data) PostsByScore() []*post {
 func (d *data) PostsByDate() []*post {
 	posts := d.Posts()
 	slices.SortStableFunc(posts, func(a, b *post) int {
-		return int(b.CreatedAt().Sub(a.CreatedAt()))
+		return int(b.PublishedAt().Sub(a.PublishedAt()))
 	})
 	return posts
 }
@@ -164,6 +252,10 @@ func (d *data) ImagesJSON() any {
 	})
 }
 
+func (d *data) User() string {
+	return First(d.Items).Username
+}
+
 // PostsJS prepares a fragment of javascript which represents the array of posts.
 // Becauses its javascript, the final element in the array must not have a trailing comma. cool.
 func (d *data) PostsJS() template.JS {
@@ -171,7 +263,7 @@ func (d *data) PostsJS() template.JS {
 	buf.WriteString("[\n")
 	for i, p := range d.Posts() {
 		buf.WriteString(fmt.Sprintf(`{id: %d, postURL: %q, score: %d, createdAt: new Date(%q)}`,
-			p.Id(), p.PostURL(), p.Score(), p.CreatedAt().Format(time.RFC3339)))
+			p.Id(), p.PostURL(), p.Score(), First(p.images).CreatedAt.Format(time.RFC3339)))
 		if i < len(d.Posts())-1 {
 			buf.WriteString(",\n")
 		}
@@ -202,7 +294,7 @@ func (d *data) PostsJSON() any {
 			"id":        p.Id(),
 			"postURL":   p.PostURL(),
 			"score":     p.Score(),
-			"createdAt": p.CreatedAt(),
+			"createdAt": First(p.images).CreatedAt,
 		}
 	})
 }
@@ -268,7 +360,8 @@ func (p *post) Score() int {
 	})...)
 }
 
-func (p *post) CreatedAt() time.Time {
+func (p *post) PublishedAt() time.Time {
+	// TODO: PubishedAt doesn't seem to parse correctly
 	return First(p.images).CreatedAt
 }
 
