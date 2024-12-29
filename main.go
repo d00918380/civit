@@ -66,6 +66,7 @@ func run() error {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(items)
+
 	case "orchestrator download":
 		c := trpc.New(CLI.APIKey)
 		ctx := context.Background()

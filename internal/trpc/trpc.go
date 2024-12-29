@@ -46,6 +46,7 @@ func (i *CursorIterator[T]) Next() bool {
 	if i.url == "" {
 		return false
 	}
+	// fmt.Println(i.url)
 	if err := requests.URL(i.url).Header("Authorization", "Bearer "+i.token).ToJSON(&response).Fetch(i.ctx); err != nil {
 		i.err = err
 		return false
@@ -134,6 +135,19 @@ func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Imag
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
 		default:
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":"`+cursor+`","authed":true}}`))
+		}
+	}}
+	iter.url = iter.nextFn("")
+	return iter
+}
+
+func (c *Client) ImagesForUsername(ctx context.Context, username string) *CursorIterator[Image] {
+	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+		switch cursor {
+		case "":
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`","useIndex":true,"browsingLevel":31,"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
+		default:
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`","useIndex":true,"browsingLevel":31,"cursor":"`+cursor+`","authed":true}}`))
 		}
 	}}
 	iter.url = iter.nextFn("")

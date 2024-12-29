@@ -32,7 +32,12 @@ func report(w io.Writer, items []*civit.Item) error {
 	}
 
 	funcs := template.FuncMap{
+		"epoch": func() time.Time {
+			// two years ago
+			return time.Now().Add(-time.Hour * 24 * 365 * 2)
+		},
 		"mean":       stats.Mean,
+		"median":     stats.Median,
 		"percentile": stats.Percentile,
 		"stddev":     stats.StandardDeviation,
 		"json": func(v any) (template.JS, error) {
@@ -48,7 +53,7 @@ func report(w io.Writer, items []*civit.Item) error {
 			}
 			return time.Now().Add(-d), nil
 		},
-		"between": func(a, b time.Time) TimeRange {
+		"between_range": func(a, b time.Time) TimeRange {
 			return TimeRange{a, b}
 		},
 		"best_posts_per_day": func(n int) map[time.Time][]*post {
@@ -80,31 +85,11 @@ func report(w io.Writer, items []*civit.Item) error {
 			return days
 		},
 
-		"best_images_per_day": func(n int) map[time.Time][]*image {
+		"per_day": func(images []*image) map[time.Time][]*image {
 			days := make(map[time.Time][]*image)
-			for _, i := range data.Images() {
+			for _, i := range images {
 				day := i.CreatedAt.Truncate(time.Hour * 24)
 				days[day] = append(days[day], i)
-			}
-			for day := range days {
-				slices.SortStableFunc(days[day], func(a, b *image) int {
-					return b.Score() - a.Score()
-				})
-				days[day] = days[day][:min(n, len(days[day]))]
-			}
-			return days
-		},
-		"worst_images_per_day": func(n int) map[time.Time][]*image {
-			days := make(map[time.Time][]*image)
-			for _, i := range data.Images() {
-				day := i.CreatedAt.Truncate(time.Hour * 24)
-				days[day] = append(days[day], i)
-			}
-			for day := range days {
-				slices.SortStableFunc(days[day], func(a, b *image) int {
-					return a.Score() - b.Score()
-				})
-				days[day] = days[day][:min(n, len(days[day]))]
 			}
 			return days
 		},
@@ -122,20 +107,6 @@ func report(w io.Writer, items []*civit.Item) error {
 			})
 			return posts[:n]
 		},
-		"worst_images": func(r TimeRange, n int) []*image {
-			insideRange := func(t time.Time) bool {
-				return t.After(r.Start) && t.Before(r.End)
-			}
-
-			images := data.ImagesByScore()
-			images = algorithms.Filter(images, func(i *image) bool {
-				return insideRange(i.CreatedAt)
-			})
-			slices.SortStableFunc(images, func(a, b *image) int {
-				return a.Score() - b.Score()
-			})
-			return images[:n]
-		},
 		"worst_efficiency": func(r TimeRange, n int) []*post {
 			insideRange := func(t time.Time) bool {
 				return t.After(r.Start) && t.Before(r.End)
@@ -149,6 +120,56 @@ func report(w io.Writer, items []*civit.Item) error {
 				return int((a.Efficiency() - b.Efficiency()) * 100)
 			})
 			return posts[:n]
+		},
+		"by_score": func(images []*image) []*image {
+			slices.SortStableFunc(images, func(a, b *image) int {
+				return b.Score() - a.Score()
+			})
+			return images
+		},
+		"by_date": func(images []*image) []*image {
+			slices.SortStableFunc(images, func(a, b *image) int {
+				return int(b.CreatedAt.Sub(a.CreatedAt))
+			})
+			return images
+		},
+		"between": func(a, b time.Time, images []*image) []*image {
+			var result []*image
+			for _, i := range images {
+				if i.CreatedAt.After(a) && i.CreatedAt.Before(b) {
+					result = append(result, i)
+				}
+			}
+			return result
+		},
+		"reverse": func(images []*image) []*image {
+			slices.Reverse(images)
+			return images
+		},
+		"take": func(n int, images []*image) []*image {
+			return images[:min(n, len(images))]
+		},
+		"scores": func(images []*image) stats.Float64Data {
+			return Map(images, func(i *image) float64 {
+				return float64(i.Score())
+			})
+		},
+		"by_post": func(images []*image) []*post {
+			posts := make(map[int][]*image)
+			for _, i := range images {
+				posts[i.PostId] = append(posts[i.PostId], i)
+			}
+			var ps []*post
+			for _, images := range posts {
+				ps = append(ps, &post{images})
+			}
+			return ps
+		},
+		"by_post_date": func(posts []*post) []*post {
+			slices.SortStableFunc(posts, func(a, b *post) int {
+				return int(b.PublishedAt().Sub(a.PublishedAt()))
+			})
+			return posts
 		},
 	}
 
@@ -186,22 +207,6 @@ func (d *data) Posts() []*post {
 		ps = append(ps, p)
 	}
 	return ps
-}
-
-func (d *data) ImagesByScore() []*image {
-	images := d.Images()
-	slices.SortStableFunc(images, func(a, b *image) int {
-		return b.Score() - a.Score()
-	})
-	return images
-}
-
-func (d *data) ImagesByDate() []*image {
-	images := d.Images()
-	slices.SortStableFunc(images, func(a, b *image) int {
-		return int(b.CreatedAt.Sub(a.CreatedAt))
-	})
-	return images
 }
 
 func (d *data) PostsByEfficiency() []*post {
