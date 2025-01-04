@@ -37,7 +37,7 @@ func report(w io.Writer, items []*civit.Item) error {
 			return time.Now().Add(-time.Hour * 24 * 365 * 2)
 		},
 		"mean":       stats.Mean,
-		"median":     stats.Median,
+		"sum":        stats.Sum,
 		"percentile": stats.Percentile,
 		"stddev":     stats.StandardDeviation,
 		"json": func(v any) (template.JS, error) {
@@ -93,20 +93,6 @@ func report(w io.Writer, items []*civit.Item) error {
 			}
 			return days
 		},
-		"worst_posts": func(r TimeRange, n int) []*post {
-			insideRange := func(t time.Time) bool {
-				return t.After(r.Start) && t.Before(r.End)
-			}
-
-			posts := data.PostsByScore()
-			posts = algorithms.Filter(posts, func(p *post) bool {
-				return insideRange(p.PublishedAt())
-			})
-			slices.SortStableFunc(posts, func(a, b *post) int {
-				return a.Score() - b.Score()
-			})
-			return posts[:n]
-		},
 		"worst_efficiency": func(r TimeRange, n int) []*post {
 			insideRange := func(t time.Time) bool {
 				return t.After(r.Start) && t.Before(r.End)
@@ -148,6 +134,12 @@ func report(w io.Writer, items []*civit.Item) error {
 		},
 		"take": func(n int, images []*image) []*image {
 			return images[:min(n, len(images))]
+		},
+		// less_thank returns images with a score less than n
+		"less_than": func(n int, images []*image) []*image {
+			return Filter(images, func(i *image) bool {
+				return i.Score() < n
+			})
 		},
 		"scores": func(images []*image) stats.Float64Data {
 			return Map(images, func(i *image) float64 {
@@ -231,18 +223,6 @@ func (d *data) PostsByDate() []*post {
 		return int(b.PublishedAt().Sub(a.PublishedAt()))
 	})
 	return posts
-}
-
-func (d *data) PostScores() stats.Float64Data {
-	return stats.Float64Data(Map(d.Posts(), func(p *post) float64 {
-		return float64(p.Score())
-	}))
-}
-
-func (d *data) ImageScores() stats.Float64Data {
-	return stats.Float64Data(Map(d.Images(), func(i *image) float64 {
-		return float64(i.Score())
-	}))
 }
 
 func (d *data) ImagesJSON() any {
