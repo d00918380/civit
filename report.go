@@ -135,10 +135,16 @@ func report(w io.Writer, items []*civit.Item) error {
 		"take": func(n int, images []*image) []*image {
 			return images[:min(n, len(images))]
 		},
-		// less_thank returns images with a score less than n
+		// less_than returns images with a score less than n
 		"less_than": func(n int, images []*image) []*image {
 			return Filter(images, func(i *image) bool {
 				return i.Score() < n
+			})
+		},
+		// greater_than returns images with a score greater than n
+		"greater_than": func(n int, images []*image) []*image {
+			return Filter(images, func(i *image) bool {
+				return i.Score() > n
 			})
 		},
 		"scores": func(images []*image) stats.Float64Data {
@@ -162,6 +168,13 @@ func report(w io.Writer, items []*civit.Item) error {
 				return int(b.PublishedAt().Sub(a.PublishedAt()))
 			})
 			return posts
+		},
+		"count_by_hour": func(images []*image) [][]*image {
+			hours := make([][]*image, 24)
+			for _, i := range images {
+				hours[i.CreatedAt.Hour()] = append(hours[i.CreatedAt.Hour()], i)
+			}
+			return hours
 		},
 	}
 

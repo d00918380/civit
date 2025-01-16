@@ -80,7 +80,6 @@ func run() error {
 						fmt.Sprintf("%04d", image.Completed.Year()),
 						fmt.Sprintf("%02d", image.Completed.Month()),
 						fmt.Sprintf("%02d", image.Completed.Day()),
-						item.ID,
 						image.ID+".jpg",
 					)
 					fmt.Println(image.URL, path)

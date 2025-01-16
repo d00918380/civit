@@ -60,6 +60,20 @@
 					<td>{{percentile $image_scores 99 }}</td>
 				</tr>
 				<tr>
+						<td>3 days</td>
+						{{ $start := ago "72h" }}
+						{{ $end := ago "1s" }}
+						{{ $image_scores := .Images | by_date | between $start $end | scores}}
+						<td>{{len $image_scores}}</td>
+						<td>{{$image_scores | sum }}</td>
+						<td>{{$image_scores | mean | printf "%0.2f" }}</td>
+						<td>{{$image_scores | stddev  | printf "%0.2f" }}</td>
+						<td>{{percentile $image_scores 50 }}</td>
+						<td>{{percentile $image_scores 90 }}</td>
+						<td>{{percentile $image_scores 95 }}</td>
+						<td>{{percentile $image_scores 99 }}</td>
+				</tr>
+				<tr>
 					<td>7 days</td>
 					{{ $start := ago "168h" }}
 					{{ $end := ago "1s" }}
@@ -115,6 +129,20 @@
 				</tr>
 		</table>
 
+		<table>
+			<thead>
+				<td>hour (UTC)</td>
+				<td>count</td>
+			</thead>
+			<tbody>
+				{{range $hour, $images := .Images | greater_than 99 | count_by_hour }}
+					<tr>
+						<td>{{$hour}}</td>
+						<td>{{len $images}}</td>
+					</tr>
+				{{end}}
+		</table>
+
 		<ul>
 			<li>Images:
 			<ul>
@@ -125,6 +153,8 @@
 				<li><a href="#worst_images_per_day">Worst Images per day</a></li>
 				<li>Worst Images
 					<ul>
+						<li><a href="#worsts_images_1d">1d</a></li>
+						<li><a href="#worsts_images_2d">2d</a></li>
 						<li><a href="#worsts_images_7d">7d</a></li>
 						<li><a href="#worsts_images_14d">14d</a></li>
 						<li><a href="#worsts_images_30d">30d</a></li>
@@ -251,11 +281,30 @@
 			{{end}}
 		</ol>
 
+		<h1 id="worsts_images_1d">Worst Images (-2d to -1d)</h1>
+		<ol>
+		{{$start := ago "48h"}}
+		{{$end := ago "24h"}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 9 }}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
+		</ol>
+
+		<h1 id="worsts_images_2d">Worst Images (-3d to -2d)</h1>
+		<ol>
+		{{$start := ago "72h"}}
+		{{$end := ago "48h"}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 15 }}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
+		</ol>	
+
+
         <h1 id="worsts_images_7d">Worst Images (-7d to -3d)</h1>
 		<ol>
 		{{$start := ago "168h"}}
 		{{$end := ago "72h"}}
-        {{range .Images | by_date | between $start $end | by_score | reverse | less_than 8 }}
+        {{range .Images | by_date | between $start $end | by_score | reverse | less_than 20 }}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
         </ol>
@@ -264,7 +313,7 @@
 		<ol>
 		{{$start := ago "336h"}}
 		{{$end := ago "168h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 10 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 11 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -273,7 +322,7 @@
 		<ol>
 		{{$start := ago "720h"}}
 		{{$end := ago "336h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 11 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 12 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -282,7 +331,7 @@
 		<ol>
 		{{$start := ago "1440h"}}
 		{{$end := ago "720h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 12 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 14 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -291,7 +340,7 @@
 		<ol>
 		{{$start := ago "2160h"}}
 		{{$end := ago "1440h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 13 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 15 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -300,7 +349,7 @@
 		<ol>
 		{{$start := epoch }}
 		{{$end := ago "2160h"}}	
-		{{range .Images | by_score | between $start $end | by_score | reverse |less_than 15 | take 25}}
+		{{range .Images | by_score | between $start $end | by_score | reverse |less_than 21 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
