@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alecthomas/kong"
 	"github.com/carlmjohnson/requests"
 	"github.com/d00918380/civit/internal/algorithms"
-	"github.com/d00918380/civit/internal/civit"
 	"github.com/d00918380/civit/internal/trpc"
 )
 
@@ -39,6 +40,7 @@ var CLI struct {
 	Images struct {
 		Metadata struct {
 			Username string `arg:"" name:"username" help:"Username to get metadata for."`
+			Id       int    `arg:"" name:"id" help:"User ID to get metadata for."`
 		} `cmd:"" help:"Get metadata for users."`
 	} `cmd:"" help:"Manage images."`
 	Orchestrator struct {
@@ -48,6 +50,14 @@ var CLI struct {
 	Report struct {
 		Input string `arg:"" name:"input" help:"Input file."`
 	} `cmd:"" help:"Generate a report."`
+	CSV struct {
+		Input string `arg:"" name:"input" help:"Input file."`
+	} `cmd:"" help:"Generate a CSV."`
+	Reactions struct {
+		Images string        `help:"path to the file with images." default:"images.txt"`
+		Models string        `help:"path to the file with models." default:"models.txt"`
+		Delay  time.Duration `help:"delay between runs." default:"20m"`
+	} `cmd:"" help:"Manage reactions."`
 }
 
 func main() {
@@ -60,9 +70,15 @@ func main() {
 func run() error {
 	ctx := kong.Parse(&CLI)
 	switch ctx.Command() {
-	case "images metadata <username>":
-		items, err := civit.New(CLI.APIKey).ItemsForUser(context.Background(), CLI.Images.Metadata.Username)
-		if err != nil {
+	case "images metadata <username> <id>":
+		c := trpc.New(CLI.APIKey)
+		ctx := context.Background()
+		var items []trpc.Item
+		iter := c.ImagesForUser(ctx, CLI.Images.Metadata.Username, CLI.Images.Metadata.Id)
+		for iter.Next() {
+			items = append(items, iter.Item())
+		}
+		if err := iter.Err(); err != nil {
 			return err
 		}
 		return json.NewEncoder(os.Stdout).Encode(items)
@@ -75,12 +91,18 @@ func run() error {
 			item := iter.Item()
 			for _, step := range item.Steps {
 				for _, image := range step.Images {
+					ext := filepath.Ext(image.ID)
+					if ext == "" {
+						ext = ".jpeg"
+					} else {
+						ext = ""
+					}
 					path := filepath.Join(
 						"generated",
 						fmt.Sprintf("%04d", image.Completed.Year()),
 						fmt.Sprintf("%02d", image.Completed.Month()),
 						fmt.Sprintf("%02d", image.Completed.Day()),
-						image.ID+".jpg",
+						image.ID+ext,
 					)
 					fmt.Println(image.URL, path)
 					if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
@@ -108,7 +130,7 @@ func run() error {
 				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 					return err
 				}
-				name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
+				name := strings.TrimPrefix(img.URL, "/") // some images have a leading slash??
 				url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
 				fmt.Println("Downloading", url, "to", path)
 				if err := requests.URL(url).ToFile(path).Fetch(ctx); err != nil {
@@ -119,7 +141,7 @@ func run() error {
 		}
 		return nil
 	case "report <input>":
-		var items []*civit.Item
+		var items []*trpc.Item
 		f, err := os.Open(CLI.Report.Input)
 		if err != nil {
 			return err
@@ -128,28 +150,60 @@ func run() error {
 		if err := json.NewDecoder(f).Decode(&items); err != nil {
 			return err
 		}
+		items = algorithms.Filter(items, func(img *trpc.Item) bool {
+			return img.Published()
+		})
 		return report(os.Stdout, items)
-	case "users download <id>":
-		c := trpc.New(CLI.APIKey)
-		ctx := context.Background()
-		iter := c.ImagesForUser(ctx, CLI.Users.Download.Id)
-		for iter.Next() {
-			img := iter.Item()
-			path := filepath.Join(
-				"posts",
-				strconv.Itoa(img.PostID),
-				img.URL+".jpeg",
-			)
-			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	case "csv <input>":
+		var items []*trpc.Item
+		f, err := os.Open(CLI.CSV.Input)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := json.NewDecoder(f).Decode(&items); err != nil {
+			return err
+		}
+		items = algorithms.Filter(items, func(img *trpc.Item) bool {
+			return img.Published()
+		})
+		return csv(os.Stdout, items)
+	case "reactions":
+		reactions := &ReactionsProcessor{
+			imagesFile: CLI.Reactions.Images,
+			modelsFile: CLI.Reactions.Models,
+			trpc:       trpc.New(CLI.APIKey),
+		}
+		for {
+			err := reactions.Run()
+			if err != nil {
 				return err
 			}
-			name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
-			url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
-			if err := fetch(ctx, url, path); err != nil {
-				fmt.Fprintln(os.Stderr, err)
-			}
+			log.Printf("sleeping til %v", time.Now().Add(CLI.Reactions.Delay))
+			time.Sleep(CLI.Reactions.Delay)
 		}
-		return iter.Err()
+
+	// case "users download <id>":
+	// 	c := trpc.New(CLI.APIKey)
+	// 	ctx := context.Background()
+	// 	iter := c.ImagesForUser(ctx, CLI.Users.Download.Id)
+	// 	for iter.Next() {
+	// 		img := iter.Item()
+	// 		path := filepath.Join(
+	// 			"posts",
+	// 			strconv.Itoa(img.PostID),
+	// 			img.URL+".jpeg",
+	// 		)
+	// 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	// 			return err
+	// 		}
+	// 		name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
+	// 		url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
+	// 		if err := fetch(ctx, url, path); err != nil {
+	// 			fmt.Fprintln(os.Stderr, err)
+	// 		}
+	// 	}
+	// 	return iter.Err()
 	case "user list <username>":
 		c := trpc.New(CLI.APIKey)
 		ctx := context.Background()

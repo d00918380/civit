@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/d00918380/civit/internal/algorithms"
-	"github.com/d00918380/civit/internal/civit"
+	"github.com/d00918380/civit/internal/trpc"
 	"github.com/montanaflynn/stats"
 )
 
@@ -26,7 +26,7 @@ type TimeRange struct {
 	End   time.Time
 }
 
-func report(w io.Writer, items []*civit.Item) error {
+func report(w io.Writer, items []*trpc.Item) error {
 	data := &data{
 		Items: items,
 	}
@@ -88,7 +88,7 @@ func report(w io.Writer, items []*civit.Item) error {
 		"per_day": func(images []*image) map[time.Time][]*image {
 			days := make(map[time.Time][]*image)
 			for _, i := range images {
-				day := i.CreatedAt.Truncate(time.Hour * 24)
+				day := i.PublishedAt.Truncate(time.Hour * 24)
 				days[day] = append(days[day], i)
 			}
 			return days
@@ -115,14 +115,14 @@ func report(w io.Writer, items []*civit.Item) error {
 		},
 		"by_date": func(images []*image) []*image {
 			slices.SortStableFunc(images, func(a, b *image) int {
-				return int(b.CreatedAt.Sub(a.CreatedAt))
+				return int(b.PublishedAt.Sub(a.PublishedAt))
 			})
 			return images
 		},
 		"between": func(a, b time.Time, images []*image) []*image {
 			var result []*image
 			for _, i := range images {
-				if i.CreatedAt.After(a) && i.CreatedAt.Before(b) {
+				if i.PublishedAt.After(a) && i.PublishedAt.Before(b) {
 					result = append(result, i)
 				}
 			}
@@ -155,7 +155,7 @@ func report(w io.Writer, items []*civit.Item) error {
 		"by_post": func(images []*image) []*post {
 			posts := make(map[int][]*image)
 			for _, i := range images {
-				posts[i.PostId] = append(posts[i.PostId], i)
+				posts[i.PostID] = append(posts[i.PostID], i)
 			}
 			var ps []*post
 			for _, images := range posts {
@@ -172,7 +172,7 @@ func report(w io.Writer, items []*civit.Item) error {
 		"count_by_hour": func(images []*image) [][]*image {
 			hours := make([][]*image, 24)
 			for _, i := range images {
-				hours[i.CreatedAt.Hour()] = append(hours[i.CreatedAt.Hour()], i)
+				hours[i.PublishedAt.Hour()] = append(hours[i.PublishedAt.Hour()], i)
 			}
 			return hours
 		},
@@ -187,11 +187,11 @@ func report(w io.Writer, items []*civit.Item) error {
 }
 
 type data struct {
-	Items []*civit.Item
+	Items []*trpc.Item
 }
 
 func (d *data) Images() []*image {
-	return Map(d.Items, func(i *civit.Item) *image {
+	return Map(d.Items, func(i *trpc.Item) *image {
 		return &image{i}
 	})
 }
@@ -199,10 +199,10 @@ func (d *data) Images() []*image {
 func (d *data) Posts() []*post {
 	posts := make(map[int]*post)
 	for _, i := range d.Items {
-		if _, ok := posts[i.PostId]; !ok {
-			posts[i.PostId] = &post{}
+		if _, ok := posts[i.PostID]; !ok {
+			posts[i.PostID] = &post{}
 		}
-		posts[i.PostId].images = append(posts[i.PostId].images, &image{i})
+		posts[i.PostID].images = append(posts[i.PostID].images, &image{i})
 	}
 	var ps []*post
 	for _, p := range posts {
@@ -241,17 +241,17 @@ func (d *data) PostsByDate() []*post {
 func (d *data) ImagesJSON() any {
 	return Map(d.Images(), func(i *image) any {
 		return map[string]any{
-			"id":        i.Id,
+			"id":        i.ID,
 			"imageURL":  i.ImageURL(),
 			"postURL":   i.PostURL(),
 			"score":     i.Score(),
-			"createdAt": i.CreatedAt,
+			"createdAt": i.PublishedAt,
 		}
 	})
 }
 
 func (d *data) User() string {
-	return First(d.Items).Username
+	return First(d.Items).User.Username
 }
 
 // PostsJS prepares a fragment of javascript which represents the array of posts.
@@ -261,7 +261,7 @@ func (d *data) PostsJS() template.JS {
 	buf.WriteString("[\n")
 	for i, p := range d.Posts() {
 		buf.WriteString(fmt.Sprintf(`{id: %d, postURL: %q, score: %d, createdAt: new Date(%q)}`,
-			p.Id(), p.PostURL(), p.Score(), First(p.images).CreatedAt.Format(time.RFC3339)))
+			p.Id(), p.PostURL(), p.Score(), First(p.images).PublishedAt.Format(time.RFC3339)))
 		if i < len(d.Posts())-1 {
 			buf.WriteString(",\n")
 		}
@@ -277,7 +277,7 @@ func (d *data) ImagesJS() template.JS {
 	buf.WriteString("[\n")
 	for i, img := range d.Images() {
 		buf.WriteString(fmt.Sprintf(`{id: %d, imageURL: %q, postURL: %q, score: %d, createdAt: new Date(%q)}`,
-			img.Id, img.ImageURL(), img.PostURL(), img.Score(), img.CreatedAt))
+			img.ID, img.ImageURL(), img.PostURL(), img.Score(), img.PublishedAt))
 		if i < len(d.Images())-1 {
 			buf.WriteString(",\n")
 		}
@@ -292,7 +292,7 @@ func (d *data) PostsJSON() any {
 			"id":        p.Id(),
 			"postURL":   p.PostURL(),
 			"score":     p.Score(),
-			"createdAt": First(p.images).CreatedAt,
+			"createdAt": First(p.images).PublishedAt,
 		}
 	})
 }
@@ -303,14 +303,14 @@ func (d *data) Leaderboard() *Leaderboard {
 	cutoff := time.Now().Add(-time.Hour * 24 * 30) // 30 days ago
 	var entries []*LeaderboardEntry
 	for _, i := range d.Images() {
-		if i.CreatedAt.After(cutoff) {
+		if i.PublishedAt.After(cutoff) {
 			entries = append(entries, &LeaderboardEntry{
 				image: i,
 			})
 		}
 	}
 	sort.SliceStable(entries, func(i, j int) bool {
-		return entries[i].AdjustedScore > entries[j].AdjustedScore
+		return entries[i].Score() > entries[j].Score()
 	})
 	for rank, e := range entries {
 		quantityMultiplier := math.Max(0, 1-math.Pow(float64(rank)/IMAGE_SCORE_FALLOFF, 0.5))
@@ -318,26 +318,33 @@ func (d *data) Leaderboard() *Leaderboard {
 		// fmt.Println("rank", rank, "score", score, "quantityMultiplier", quantityMultiplier, "adjustedScore", score*quantityMultiplier)
 		e.AdjustedScore = score * quantityMultiplier
 	}
-
-	// cutoff at 120
-	entries = entries[:min(120, len(entries))]
-	return &Leaderboard{Entries: entries}
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].AdjustedScore > entries[j].AdjustedScore
+	})
+	return &Leaderboard{
+		// cutoff at 120
+		Entries: entries[:min(120, len(entries))],
+	}
 }
 
 type image struct {
-	*civit.Item
+	*trpc.Item
 }
 
 func (i *image) Score() int {
-	return Sum(i.Stats.CryCount, i.Stats.LaughCount, i.Stats.LikeCount, i.Stats.HeartCount, -i.Stats.DislikeCount)
+	return Sum(i.Stats.LikeCountAllTime, i.Stats.LaughCountAllTime, i.Stats.HeartCountAllTime, i.Stats.CryCountAllTime)
+}
+
+func (i *image) Hour() int {
+	return i.PublishedAt.Hour()
 }
 
 func (i *image) ImageURL() template.HTMLAttr {
-	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/images/%d", i.Id))
+	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/images/%d", i.ID))
 }
 
 func (i *image) PostURL() template.HTMLAttr {
-	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/posts/%d", i.PostId))
+	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/posts/%d", i.PostID))
 }
 
 type post struct {
@@ -345,11 +352,11 @@ type post struct {
 }
 
 func (p *post) Id() int {
-	return First(p.images).PostId
+	return First(p.images).PostID
 }
 
 func (p *post) PostURL() template.HTMLAttr {
-	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/posts/%d", First(p.images).PostId))
+	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/posts/%d", First(p.images).PostID))
 }
 
 func (p *post) Score() int {
@@ -359,8 +366,7 @@ func (p *post) Score() int {
 }
 
 func (p *post) PublishedAt() time.Time {
-	// TODO: PubishedAt doesn't seem to parse correctly
-	return First(p.images).CreatedAt
+	return First(p.images).PublishedAt
 }
 
 func (p *post) Images() []*image {

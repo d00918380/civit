@@ -155,6 +155,7 @@
 					<ul>
 						<li><a href="#worsts_images_1d">1d</a></li>
 						<li><a href="#worsts_images_2d">2d</a></li>
+						<li><a href="#worsts_images_3d">7d</a></li>
 						<li><a href="#worsts_images_7d">7d</a></li>
 						<li><a href="#worsts_images_14d">14d</a></li>
 						<li><a href="#worsts_images_30d">30d</a></li>
@@ -285,7 +286,7 @@
 		<ol>
 		{{$start := ago "48h"}}
 		{{$end := ago "24h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 9 }}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 21 }}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -294,17 +295,27 @@
 		<ol>
 		{{$start := ago "72h"}}
 		{{$end := ago "48h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 15 }}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 26 }}
+			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
+		{{end}}
+		</ol>	
+
+		<h1 id="worsts_images_3d">Worst Images (-5d to -3d)</h1>
+		<ol>
+		{{$start := ago "120h"}}
+		{{$end := ago "72h"}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 31 }}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>	
 
 
-        <h1 id="worsts_images_7d">Worst Images (-7d to -3d)</h1>
+
+        <h1 id="worsts_images_7d">Worst Images (-7d to -5d)</h1>
 		<ol>
 		{{$start := ago "168h"}}
-		{{$end := ago "72h"}}
-        {{range .Images | by_date | between $start $end | by_score | reverse | less_than 20 }}
+		{{$end := ago "120h"}}
+        {{range .Images | by_date | between $start $end | by_score | reverse | less_than 41 }}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
         </ol>
@@ -313,7 +324,7 @@
 		<ol>
 		{{$start := ago "336h"}}
 		{{$end := ago "168h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 11 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 20 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -322,7 +333,7 @@
 		<ol>
 		{{$start := ago "720h"}}
 		{{$end := ago "336h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 12 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 21 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -331,7 +342,7 @@
 		<ol>
 		{{$start := ago "1440h"}}
 		{{$end := ago "720h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 14 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 20 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -340,7 +351,7 @@
 		<ol>
 		{{$start := ago "2160h"}}
 		{{$end := ago "1440h"}}
-		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 15 | take 25}}
+		{{range .Images | by_date | between $start $end | by_score | reverse | less_than 21 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>
@@ -349,7 +360,7 @@
 		<ol>
 		{{$start := epoch }}
 		{{$end := ago "2160h"}}	
-		{{range .Images | by_score | between $start $end | by_score | reverse |less_than 21 | take 25}}
+		{{range .Images | by_score | between $start $end | by_score | reverse |less_than 25 | take 25}}
 			<li><a href="{{.ImageURL}}">{{.ImageURL}}</a> <a href="{{.PostURL}}">{{.PostURL}}</a> ({{.Score}})</li>
 		{{end}}
 		</ol>

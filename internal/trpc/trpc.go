@@ -110,26 +110,46 @@ func (c *Client) QueryGeneratedImages(ctx context.Context) *CursorIterator[Gener
 	return iter
 }
 
-type Image struct {
-	ID        int       `json:"id"`
-	Name      string    `json:"name"`
-	URL       string    `json:"url"`
-	NSFWLevel int       `json:"nsfwLevel"`
-	Width     int       `json:"width"`
-	Height    int       `json:"height"`
-	Hash      string    `json:"hash"`
-	HideMeta  bool      `json:"hideMeta"`
-	HasMeta   bool      `json:"hasMeta"`
-	OnSite    bool      `json:"onSite"`
-	CreatedAt time.Time `json:"createdAt"`
-	SortAt    time.Time `json:"sortAt"`
-	MimeType  string    `json:"mimeType"`
-	Type      string    `json:"type"`
-	PostID    int       `json:"postId"`
+type Item struct {
+	ID       int    `json:"id"`
+	Index    int    `json:"index"`
+	PostID   int    `json:"postId"`
+	URL      string `json:"url"`
+	Width    int    `json:"width"`
+	Height   int    `json:"height"`
+	Hash     string `json:"hash"`
+	HideMeta bool   `json:"hideMeta"`
+	HasMeta  bool   `json:"hasMeta"`
+	OnSite   bool   `json:"onSite"`
+	// CreatedAt   time.Time `json:"createdAt"`
+	// SortAt      time.Time `json:"sortAt"`
+	PublishedAt time.Time `json:"publishedAt"`
+	// ReactionCount int       `json:"reactionCount"`
+	Type  string `json:"type"`
+	Stats struct {
+		LikeCountAllTime         int `json:"likeCountAllTime"`
+		LaughCountAllTime        int `json:"laughCountAllTime"`
+		HeartCountAllTime        int `json:"heartCountAllTime"`
+		CryCountAllTime          int `json:"cryCountAllTime"`
+		CommentCountAllTime      int `json:"commentCountAllTime"`
+		CollectedCountAllTime    int `json:"collectedCountAllTime"`
+		TippedAmountCountAllTime int `json:"tippedAmountCountAllTime"`
+		// DislikeCountAllTime      int `json:"dislikeCountAllTime"`
+		// ViewCountAllTime         int `json:"viewCountAllTime"`
+	} `json:"stats"`
+	User struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+	} `json:"user"`
+	// Availability string `json:"availability"`
 }
 
-func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Image] {
-	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (i *Item) Published() bool {
+	return !i.PublishedAt.IsZero()
+}
+
+func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Item] {
+	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
@@ -141,8 +161,8 @@ func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Imag
 	return iter
 }
 
-func (c *Client) ImagesForUsername(ctx context.Context, username string) *CursorIterator[Image] {
-	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (c *Client) ImagesForUsername(ctx context.Context, username string) *CursorIterator[Item] {
+	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`","useIndex":true,"browsingLevel":31,"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
@@ -154,17 +174,58 @@ func (c *Client) ImagesForUsername(ctx context.Context, username string) *Cursor
 	return iter
 }
 
-func (c *Client) ImagesForUser(ctx context.Context, id int) *CursorIterator[Image] {
-	iter := &CursorIterator[Image]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+func (c *Client) ImagesForUser(ctx context.Context, username string, id int) *CursorIterator[Item] {
+	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
-			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"userId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"period":"AllTime","sort":"Newest","types":["image"],"username":"`+username+`","withMeta":false,"fromPlatform":false,"userId":`+strconv.Itoa(id)+`,"useIndex":true,"browsingLevel":31,"include":["cosmetics"],"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
 		default:
-			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"userId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":"`+cursor+`","authed":true}}`))
+			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"period":"AllTime","sort":"Newest","types":["image"],"username":"`+username+`","withMeta":false,"fromPlatform":false,"userId":`+strconv.Itoa(id)+`,"useIndex":true,"browsingLevel":31,"include":["cosmetics"],"cursor":"`+cursor+`","authed":true}}`))
 		}
 	}}
 	iter.url = iter.nextFn("")
 	return iter
+}
+
+func (c *Client) Image(ctx context.Context, id int) (*Item, error) {
+	var response struct {
+		Result struct {
+			Data struct {
+				Item `json:"json"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	url := fmt.Sprintf("https://civitai.com/api/trpc/image.get?input=%s", url.QueryEscape(fmt.Sprintf(`{"json":{"id":%d,"authed":true}}`, id)))
+	return &response.Result.Data.Item, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
+}
+
+type Model struct {
+	ID            int    `json:"id"`
+	Name          string `json:"name"`
+	ModelVersions []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+		Rank struct {
+			GenerationCountAllTime int `json:"generationCountAllTime"`
+			DownloadCountAllTime   int `json:"downloadCountAllTime"`
+			RatingCountAllTime     int `json:"ratingCountAllTime"`
+			RatingAllTime          int `json:"ratingAllTime"`
+			ThumbsUpCountAllTime   int `json:"thumbsUpCountAllTime"`
+			ThumbsDownCountAllTime int `json:"thumbsDownCountAllTime"`
+		} `json:"rank"`
+	} `json:"modelVersions"`
+}
+
+func (c *Client) Model(ctx context.Context, id int) (*Model, error) {
+	var response struct {
+		Result struct {
+			Data struct {
+				Model `json:"json"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	url := fmt.Sprintf("https://civitai.com/api/trpc/model.getById?input=%s", url.QueryEscape(fmt.Sprintf(`{"json":{"id":%d,"authed":true}}`, id)))
+	return &response.Result.Data.Model, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
 }
 
 type Result[T any] struct {
