@@ -335,12 +335,17 @@ func (i *image) Score() int {
 	return Sum(i.Stats.LikeCountAllTime, i.Stats.LaughCountAllTime, i.Stats.HeartCountAllTime, i.Stats.CryCountAllTime)
 }
 
+// time returns the time hh:mm the image was published.
+func (i *image) Time() string {
+	return i.PublishedAt.Format("15:04")
+}
+
 func (i *image) Hour() int {
 	return i.PublishedAt.Hour()
 }
 
 func (i *image) ImageURL() template.HTMLAttr {
-	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/images/%d", i.ID))
+	return template.HTMLAttr(fmt.Sprintf("https://civitai.com/images/%d?postId=%d", i.ID, i.PostID))
 }
 
 func (i *image) PostURL() template.HTMLAttr {

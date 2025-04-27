@@ -3,16 +3,20 @@ package trpc
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"github.com/carlmjohnson/requests"
+	"go.nhat.io/cookiejar"
+	"golang.org/x/net/publicsuffix"
 )
 
 // Client is TRPC client for the Civit API.
 type Client struct {
 	token string
+	jar   *cookiejar.PersistentJar
 }
 
 type CursorResult[T any] struct {
@@ -77,8 +81,14 @@ func (i *CursorIterator[T]) Err() error {
 }
 
 // New creates a new Civit TRCP API client.
-func New(token string) *Client {
-	return &Client{token: token}
+func New(token string, cookiesfile string) *Client {
+	jar := cookiejar.NewPersistentJar(
+		cookiejar.WithFilePath(cookiesfile),
+		cookiejar.WithAutoSync(true),
+		// All users of cookiejar should import "golang.org/x/net/publicsuffix"
+		cookiejar.WithPublicSuffixList(publicsuffix.List),
+	)
+	return &Client{token: token, jar: jar}
 }
 
 // GeneratedItem is a generated image.
@@ -226,6 +236,31 @@ func (c *Client) Model(ctx context.Context, id int) (*Model, error) {
 	}
 	url := fmt.Sprintf("https://civitai.com/api/trpc/model.getById?input=%s", url.QueryEscape(fmt.Sprintf(`{"json":{"id":%d,"authed":true}}`, id)))
 	return &response.Result.Data.Model, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
+}
+
+type CompensationPool struct {
+	// Value is the value of the current compensation pool in US dollars.
+	Value float64 `json:"value"`
+	Size  struct {
+		// Current is the current size of banked buzz.
+		Current float64 `json:"current"`
+		// Forecasted is the forecasted size of banked buzz.
+		Forecasted float64 `json:"forecasted"`
+	} `json:"size"`
+}
+
+func (c *Client) CreatorProgramGetCompensationPool(ctx context.Context) (*CompensationPool, error) {
+	var response struct {
+		Result struct {
+			Data struct {
+				CompensationPool `json:"json"`
+			} `json:"data"`
+		} `json:"result"`
+	}
+	url := `https://civitai.com/api/trpc/creatorProgram.getCompensationPool?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D`
+	client := *http.DefaultClient
+	client.Jar = c.jar
+	return &response.Result.Data.CompensationPool, requests.URL(url).Client(&client).ToJSON(&response).Fetch(ctx)
 }
 
 type Result[T any] struct {

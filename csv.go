@@ -16,7 +16,7 @@ func csv(w io.Writer, items []*trpc.Item) error {
 		Items: items,
 	}
 	funcs := template.FuncMap{}
-	t, err := template.New("report.html").Funcs(funcs).Parse(csvTemplate)
+	t, err := template.New("csv.csv").Funcs(funcs).Parse(csvTemplate)
 	if err != nil {
 		return err
 	}

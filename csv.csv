@@ -1,0 +1,4 @@
+time (UTC), score
+{{range .Images -}}
+{{.Time}},{{.Score}}
+{{end -}}

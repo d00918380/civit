@@ -18,8 +18,9 @@ import (
 )
 
 var CLI struct {
-	APIKey string `env:"CIVIT_API_KEY" help:"API key." required:""`
-	Posts  struct {
+	APIKey  string `env:"CIVIT_API_KEY" help:"API key." required:""`
+	Cookies string `help:"Path to the cookies file." default:"cookies.json"`
+	Posts   struct {
 		Download struct {
 			Ids []int `arg:"" name:"id" help:"Post IDs to download."`
 		} `cmd:"" help:"Download posts."`
@@ -71,7 +72,7 @@ func run() error {
 	ctx := kong.Parse(&CLI)
 	switch ctx.Command() {
 	case "images metadata <username> <id>":
-		c := trpc.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
 		var items []trpc.Item
 		iter := c.ImagesForUser(ctx, CLI.Images.Metadata.Username, CLI.Images.Metadata.Id)
@@ -84,7 +85,7 @@ func run() error {
 		return json.NewEncoder(os.Stdout).Encode(items)
 
 	case "orchestrator download":
-		c := trpc.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
 		iter := c.QueryGeneratedImages(ctx)
 		for iter.Next() {
@@ -116,7 +117,7 @@ func run() error {
 		}
 		return iter.Err()
 	case "posts download <id>":
-		c := trpc.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
 		for _, id := range CLI.Posts.Download.Ids {
 			iter := c.ImagesForPost(ctx, id)
@@ -172,7 +173,7 @@ func run() error {
 		reactions := &ReactionsProcessor{
 			imagesFile: CLI.Reactions.Images,
 			modelsFile: CLI.Reactions.Models,
-			trpc:       trpc.New(CLI.APIKey),
+			trpc:       trpc.New(CLI.APIKey, CLI.Cookies),
 		}
 		for {
 			err := reactions.Run()
@@ -205,7 +206,7 @@ func run() error {
 	// 	}
 	// 	return iter.Err()
 	case "user list <username>":
-		c := trpc.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
 		lists, err := c.ListsForUser(ctx, CLI.User.List.Username)
 		if err != nil {
@@ -236,7 +237,7 @@ func run() error {
 	// 	}
 	// 	return iter.Err()
 	case "users following":
-		c := trpc.New(CLI.APIKey)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
 		iter := c.UsersFollowing(ctx)
 		for iter.Next() {
@@ -247,12 +248,4 @@ func run() error {
 	default:
 		return fmt.Errorf("unknown command: %s", ctx.Command())
 	}
-}
-
-func fetch(ctx context.Context, url, path string) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return err
-	}
-	fmt.Println("fetch:", url, "=>", path)
-	return requests.URL(url).ToFile(path).Fetch(ctx)
 }

@@ -20,12 +20,16 @@ type ReactionsProcessor struct {
 
 func (rp *ReactionsProcessor) Run() error {
 	log.Println("Run started")
-	if err := rp.processImages(); err != nil {
-		return err
+	for _, fn := range []func() error{
+		// rp.processImages,
+		// rp.processModels,
+		rp.processCompensation,
+	} {
+		if err := fn(); err != nil {
+			return err
+		}
 	}
-	if err := rp.processModels(); err != nil {
-		return err
-	}
+	log.Println("Run completed")
 	return nil
 }
 
@@ -102,6 +106,23 @@ func (rp *ReactionsProcessor) processModels() error {
 		}
 	}
 	return sc.Err()
+}
+
+func (rp *ReactionsProcessor) processCompensation() error {
+	out, err := os.OpenFile("compensation.csv", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	ts := time.Now().Format(time.DateTime)
+
+	comp, err := rp.trpc.CreatorProgramGetCompensationPool(context.Background())
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "%s,%.2f,%.2f,%.2f\n", ts, comp.Value, comp.Size.Current, comp.Size.Forecasted)
+	return nil
 }
 
 func score(i *trpc.Item) int {
