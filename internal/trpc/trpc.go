@@ -15,8 +15,7 @@ import (
 
 // Client is TRPC client for the Civit API.
 type Client struct {
-	token string
-	jar   *cookiejar.PersistentJar
+	client *http.Client
 }
 
 type CursorResult[T any] struct {
@@ -29,6 +28,7 @@ type CursorResult[T any] struct {
 }
 
 type CursorIterator[T any] struct {
+	client *http.Client
 	ctx    context.Context
 	items  []T
 	nextFn func(string) string
@@ -50,8 +50,7 @@ func (i *CursorIterator[T]) Next() bool {
 	if i.url == "" {
 		return false
 	}
-	// fmt.Println(i.url)
-	if err := requests.URL(i.url).Header("Authorization", "Bearer "+i.token).ToJSON(&response).Fetch(i.ctx); err != nil {
+	if err := requests.URL(i.url).Client(i.client).ToJSON(&response).Fetch(i.ctx); err != nil {
 		i.err = err
 		return false
 	}
@@ -88,7 +87,9 @@ func New(token string, cookiesfile string) *Client {
 		// All users of cookiejar should import "golang.org/x/net/publicsuffix"
 		cookiejar.WithPublicSuffixList(publicsuffix.List),
 	)
-	return &Client{token: token, jar: jar}
+	client := *http.DefaultClient
+	client.Jar = jar
+	return &Client{client: &client}
 }
 
 // GeneratedItem is a generated image.
@@ -108,7 +109,7 @@ type GeneratedItem struct {
 }
 
 func (c *Client) QueryGeneratedImages(ctx context.Context) *CursorIterator[GeneratedItem] {
-	iter := &CursorIterator[GeneratedItem]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+	iter := &CursorIterator[GeneratedItem]{ctx: ctx, client: c.client, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/orchestrator.queryGeneratedImages?input=%s", url.QueryEscape(`{"json":{"tags":["gen"],"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
@@ -158,8 +159,17 @@ func (i *Item) Published() bool {
 	return !i.PublishedAt.IsZero()
 }
 
+func (c *Client) AddImageToShowcase(ctx context.Context, id int) error {
+	return requests.URL("https://civitai.com/api/trpc/userProfile.addEntityToShowcase").Client(c.client).BodyJSON(map[string]any{
+		"json": map[string]any{
+			"entityId":   id,
+			"entityType": "Image",
+			"authed":     true,
+		}}).Post().Fetch(ctx)
+}
+
 func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Item] {
-	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+	iter := &CursorIterator[Item]{ctx: ctx, client: c.client, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"postId":`+strconv.Itoa(id)+`,"pending":true,"browsingLevel":null,"cursor":null,"authed":true},"meta":{"values":{"browsingLevel":["undefined"],"cursor":["undefined"]}}}`))
@@ -172,7 +182,7 @@ func (c *Client) ImagesForPost(ctx context.Context, id int) *CursorIterator[Item
 }
 
 func (c *Client) ImagesForUsername(ctx context.Context, username string) *CursorIterator[Item] {
-	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+	iter := &CursorIterator[Item]{ctx: ctx, client: c.client, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`","useIndex":true,"browsingLevel":31,"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
@@ -185,7 +195,7 @@ func (c *Client) ImagesForUsername(ctx context.Context, username string) *Cursor
 }
 
 func (c *Client) ImagesForUser(ctx context.Context, username string, id int) *CursorIterator[Item] {
-	iter := &CursorIterator[Item]{ctx: ctx, token: c.token, nextFn: func(cursor string) string {
+	iter := &CursorIterator[Item]{ctx: ctx, client: c.client, nextFn: func(cursor string) string {
 		switch cursor {
 		case "":
 			return fmt.Sprintf("https://civitai.com/api/trpc/image.getInfinite?input=%s", url.QueryEscape(`{"json":{"period":"AllTime","sort":"Newest","types":["image"],"username":"`+username+`","withMeta":false,"fromPlatform":false,"userId":`+strconv.Itoa(id)+`,"useIndex":true,"browsingLevel":31,"include":["cosmetics"],"cursor":null,"authed":true},"meta":{"values":{"cursor":["undefined"]}}}`))
@@ -206,7 +216,7 @@ func (c *Client) Image(ctx context.Context, id int) (*Item, error) {
 		} `json:"result"`
 	}
 	url := fmt.Sprintf("https://civitai.com/api/trpc/image.get?input=%s", url.QueryEscape(fmt.Sprintf(`{"json":{"id":%d,"authed":true}}`, id)))
-	return &response.Result.Data.Item, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
+	return &response.Result.Data.Item, requests.URL(url).Client(c.client).ToJSON(&response).Fetch(ctx)
 }
 
 type Model struct {
@@ -235,7 +245,7 @@ func (c *Client) Model(ctx context.Context, id int) (*Model, error) {
 		} `json:"result"`
 	}
 	url := fmt.Sprintf("https://civitai.com/api/trpc/model.getById?input=%s", url.QueryEscape(fmt.Sprintf(`{"json":{"id":%d,"authed":true}}`, id)))
-	return &response.Result.Data.Model, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
+	return &response.Result.Data.Model, requests.URL(url).Client(c.client).ToJSON(&response).Fetch(ctx)
 }
 
 type CompensationPool struct {
@@ -258,9 +268,7 @@ func (c *Client) CreatorProgramGetCompensationPool(ctx context.Context) (*Compen
 		} `json:"result"`
 	}
 	url := `https://civitai.com/api/trpc/creatorProgram.getCompensationPool?input=%7B%22json%22%3A%7B%22authed%22%3Atrue%7D%7D`
-	client := *http.DefaultClient
-	client.Jar = c.jar
-	return &response.Result.Data.CompensationPool, requests.URL(url).Client(&client).ToJSON(&response).Fetch(ctx)
+	return &response.Result.Data.CompensationPool, requests.URL(url).Client(c.client).ToJSON(&response).Fetch(ctx)
 }
 
 type Result[T any] struct {
@@ -313,7 +321,7 @@ type User struct {
 }
 
 func (c *Client) UsersFollowing(ctx context.Context) *CursorIterator[User] {
-	iter := &CursorIterator[User]{ctx: ctx, token: c.token, nextFn: func(_ string) string {
+	iter := &CursorIterator[User]{ctx: ctx, client: c.client, nextFn: func(_ string) string {
 		return fmt.Sprintf("https://civitai.com/api/trpc/user.getFollowingUsers?input=%s", url.QueryEscape(`{"json":{"authed":true}}`))
 	}}
 	iter.url = iter.nextFn("")
@@ -334,5 +342,5 @@ func (c *Client) ListsForUser(ctx context.Context, username string) (*Lists, err
 		} `json:"result"`
 	}
 	url := fmt.Sprintf("https://civitai.com/api/trpc/user.getLists?input=%s", url.QueryEscape(`{"json":{"username":"`+username+`"}}`))
-	return &response.Result.Data.Lists, requests.URL(url).Header("Authorization", "Bearer "+c.token).ToJSON(&response).Fetch(ctx)
+	return &response.Result.Data.Lists, requests.URL(url).Client(c.client).ToJSON(&response).Fetch(ctx)
 }

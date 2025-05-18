@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -59,6 +62,14 @@ var CLI struct {
 		Models string        `help:"path to the file with models." default:"models.txt"`
 		Delay  time.Duration `help:"delay between runs." default:"20m"`
 	} `cmd:"" help:"Manage reactions."`
+	Showcase struct {
+		Add struct {
+			Images []int `arg:"" name:"images" help:"Image IDs to add to the showcase."`
+		} `cmd:"" help:"Add images to the showcase."`
+		Leaderboard struct {
+			Input string `arg:"" name:"input" help:"Input file."`
+		} `cmd:"" help:"Set showcase the leaderboard."`
+	} `cmd:"" help:"Manage showcase."`
 }
 
 func main() {
@@ -183,28 +194,66 @@ func run() error {
 			log.Printf("sleeping til %v", time.Now().Add(CLI.Reactions.Delay))
 			time.Sleep(CLI.Reactions.Delay)
 		}
+	case "showcase add <images>":
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
+		ctx := context.Background()
+		for _, id := range CLI.Showcase.Add.Images {
+			if err := c.AddImageToShowcase(ctx, id); err != nil {
+				return err
+			}
+			fmt.Printf("Added %d to showcase\n", id)
+		}
+		return nil
+	case "showcase leaderboard <input>":
+		var items []*trpc.Item
+		f, err := os.Open(CLI.Showcase.Leaderboard.Input)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := json.NewDecoder(f).Decode(&items); err != nil {
+			return err
+		}
+		items = algorithms.Filter(items, func(img *trpc.Item) bool {
+			return img.Published()
+		})
+		const IMAGE_SCORE_FALLOFF = 120
 
-	// case "users download <id>":
-	// 	c := trpc.New(CLI.APIKey)
-	// 	ctx := context.Background()
-	// 	iter := c.ImagesForUser(ctx, CLI.Users.Download.Id)
-	// 	for iter.Next() {
-	// 		img := iter.Item()
-	// 		path := filepath.Join(
-	// 			"posts",
-	// 			strconv.Itoa(img.PostID),
-	// 			img.URL+".jpeg",
-	// 		)
-	// 		if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-	// 			return err
-	// 		}
-	// 		name := strings.TrimPrefix(img.Name, "/") // some images have a leading slash??
-	// 		url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
-	// 		if err := fetch(ctx, url, path); err != nil {
-	// 			fmt.Fprintln(os.Stderr, err)
-	// 		}
-	// 	}
-	// 	return iter.Err()
+		cutoff := time.Now().Add(-time.Hour * 24 * 30) // 30 days ago
+		var entries []*LeaderboardEntry
+		for _, i := range (&data{Items: items}).Images() {
+			if i.PublishedAt.After(cutoff) {
+				entries = append(entries, &LeaderboardEntry{
+					image: i,
+				})
+			}
+		}
+		sort.SliceStable(entries, func(i, j int) bool {
+			return entries[i].Score() > entries[j].Score()
+		})
+		for rank, e := range entries {
+			quantityMultiplier := math.Max(0, 1-math.Pow(float64(rank)/IMAGE_SCORE_FALLOFF, 0.5))
+			score := float64(e.Score())
+			// fmt.Println("rank", rank, "score", score, "quantityMultiplier", quantityMultiplier, "adjustedScore", score*quantityMultiplier)
+			e.AdjustedScore = score * quantityMultiplier
+		}
+		sort.SliceStable(entries, func(i, j int) bool {
+			return entries[i].AdjustedScore > entries[j].AdjustedScore
+		})
+		// the scoreboard ignores duplicates, but clearing it involves reposting the profile struct,
+		// instead, push at least 60 images to the showcase which should mean that by the 30'th image
+		// the top 30 images are _not_ in the showcase and thus will flow in as expected.
+		entries = entries[:min(60, len(entries))]
+		slices.Reverse(entries)
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
+		for _, e := range entries {
+			if err := c.AddImageToShowcase(context.Background(), e.image.ID); err != nil {
+				return err
+			}
+			fmt.Printf("Added %d to showcase\n", e.image.ID)
+		}
+		return nil
+
 	case "user list <username>":
 		c := trpc.New(CLI.APIKey, CLI.Cookies)
 		ctx := context.Background()
