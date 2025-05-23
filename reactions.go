@@ -131,7 +131,8 @@ func (rp *ReactionsProcessor) processCompensation() error {
 
 	comp, err := rp.trpc.CreatorProgramGetCompensationPool(context.Background())
 	if err != nil {
-		return err
+		fmt.Println("Error fetching compensation pool:", err)
+		return nil
 	}
 	fmt.Fprintf(out, "%s,%.2f,%.2f,%.2f\n", ts, comp.Value, comp.Size.Current, comp.Size.Forecasted)
 	return nil
