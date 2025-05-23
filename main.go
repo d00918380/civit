@@ -60,6 +60,7 @@ var CLI struct {
 	Reactions struct {
 		Images string        `help:"path to the file with images." default:"images.txt"`
 		Models string        `help:"path to the file with models." default:"models.txt"`
+		Whales string        `help:"path to the file with whales." default:"whales.txt"`
 		Delay  time.Duration `help:"delay between runs." default:"20m"`
 	} `cmd:"" help:"Manage reactions."`
 	Showcase struct {
@@ -184,6 +185,7 @@ func run() error {
 		reactions := &ReactionsProcessor{
 			imagesFile: CLI.Reactions.Images,
 			modelsFile: CLI.Reactions.Models,
+			whalesFile: CLI.Reactions.Whales,
 			trpc:       trpc.New(CLI.APIKey, CLI.Cookies),
 		}
 		for {
