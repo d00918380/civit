@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -13,16 +14,20 @@ import (
 )
 
 type ReactionsProcessor struct {
-	trpc       *trpc.Client
-	imagesFile string
-	modelsFile string
+	trpc                               *trpc.Client
+	imagesFile, modelsFile, whalesFile string
 }
 
 func (rp *ReactionsProcessor) Run() error {
 	log.Println("Run started")
 	for _, fn := range []func() error{
-		// rp.processImages,
-		// rp.processModels,
+		rp.processImages,
+		func() error {
+			return rp.processModels(rp.modelsFile)
+		},
+		func() error {
+			return rp.processModels(rp.whalesFile)
+		},
 		rp.processCompensation,
 	} {
 		if err := fn(); err != nil {
@@ -69,16 +74,23 @@ func (rp *ReactionsProcessor) processImages() error {
 	return sc.Err()
 }
 
-func (rp *ReactionsProcessor) processModels() error {
+func (rp *ReactionsProcessor) processModels(input string) error {
 	ctx := context.Background()
-	log.Println("Processing models from", rp.modelsFile)
-	f, err := os.Open(rp.modelsFile)
+	log.Println("Processing models from", input)
+	f, err := os.Open(input)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 
-	out, err := os.OpenFile("models.csv", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	var output string
+	ext := filepath.Ext(input)
+	// strip extension and replace with .csv
+	if ext != "" {
+		output = input[:len(input)-len(ext)] + ".csv"
+	}
+
+	out, err := os.OpenFile(output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
