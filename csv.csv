@@ -1,4 +1,4 @@
-time (UTC), score
+date, id, score
 {{range .Images -}}
-{{.Time}},{{.Score}}
+{{.DateTime}},{{.ID}},{{.Score}}
 {{end -}}

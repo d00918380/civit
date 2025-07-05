@@ -336,8 +336,8 @@ func (i *image) Score() int {
 }
 
 // time returns the time hh:mm the image was published.
-func (i *image) Time() string {
-	return i.PublishedAt.Format("15:04")
+func (i *image) DateTime() string {
+	return i.PublishedAt.Format(time.DateTime)
 }
 
 func (i *image) Hour() int {

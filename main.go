@@ -32,8 +32,8 @@ var CLI struct {
 		Following struct {
 		} `cmd:"" help:"Fetch users that the current user is following."`
 		Download struct {
-			// Username string `arg:"" name:"username" help:"Username to download."`
-			Id int `arg:"" name:"id" help:"User ID to download."`
+			Username string `arg:"" name:"username" help:"Username to download."`
+			Id       int    `arg:"" name:"id" help:"User ID to download."`
 		} `cmd:"" help:"Download users."`
 	} `cmd:"" help:"Manage users."`
 	User struct {
@@ -125,6 +125,30 @@ func run() error {
 						fmt.Println(err) // some images are missing
 					}
 				}
+			}
+		}
+		return iter.Err()
+
+	case "users download <username> <id>":
+		c := trpc.New(CLI.APIKey, CLI.Cookies)
+		ctx := context.Background()
+		iter := c.ImagesForUser(ctx, CLI.Images.Metadata.Username, CLI.Images.Metadata.Id)
+		for iter.Next() {
+			img := iter.Item()
+			path := filepath.Join(
+				"posts",
+				strconv.Itoa(img.PostID),
+				img.URL+".jpeg",
+			)
+			if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+				return err
+			}
+			name := strings.TrimPrefix(img.URL, "/") // some images have a leading slash??
+			url := fmt.Sprintf("https://image.civitai.com/xG1nkqKTMzGDvpLrqFT7WA/%s/%s.jpeg", img.URL, name)
+			fmt.Println("Downloading", url, "to", path)
+			if err := requests.URL(url).ToFile(path).Fetch(ctx); err != nil {
+				fmt.Println(err) // some images are missing
+				fmt.Printf("%+v\n", img)
 			}
 		}
 		return iter.Err()
